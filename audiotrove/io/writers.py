@@ -16,10 +16,10 @@ class JSONLWriter:
 
     def write(self, doc: AudioDocument) -> None:
         data = {
-            "doc_id": make_doc_id(doc.path),
-            "source_path": doc.path,
+            "doc_id": make_doc_id(doc.source_path),
+            "source_path": doc.source_path,
             "sample_rate": doc.sample_rate,
-            "duration_seconds": doc.duration,
+            "duration_seconds": doc.duration_seconds,
             "metadata": doc.metadata
         }
         with self.output_path.open('a') as f:
