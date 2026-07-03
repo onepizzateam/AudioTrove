@@ -3,11 +3,11 @@ Audio writers.
 """
 
 import os
-import json
 from pathlib import Path
 from typing import Dict
 
 from audiotrove.document import AudioDocument
+from audiotrove.utils.hashing import make_doc_id
 
 class JSONLWriter:
     def __init__(self, output_path: str):

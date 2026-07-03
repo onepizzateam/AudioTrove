@@ -1,6 +1,9 @@
 import pytest
 from audiotrove.document import AudioDocument
 from audiotrove.io.writers import JSONLWriter
+from pathlib import Path
+import json
+from audiotrove.utils.hashing import make_doc_id
 
 def test_jsonl_writer_file_creation():
     output_path = "test_output.jsonl"
