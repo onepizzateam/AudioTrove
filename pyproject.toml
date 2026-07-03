@@ -1,0 +1,21 @@
+[project]
+name = "audiotrove"
+version = "0.0.1"
+description = "Composable audio dataset curation pipeline"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy",
+    "torch",
+    "torchaudio",
+    "fsspec",
+    "click",
+    "rich",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "mypy",
+]

@@ -1,0 +1,10 @@
+[ ] AudioDocument tests
+[ ] Base interface tests
+[ ] JSONL writer
+[ ] Audio reader
+[ ] Sequential executor
+[ ] VAD filter
+[ ] SNR filter
+[ ] CLI
+[ ] CI cleanup
+[ ] v0 release
