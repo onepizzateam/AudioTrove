@@ -4,6 +4,7 @@ Audio writers.
 
 import os
 from pathlib import Path
+import json  # Import the json module
 from typing import Dict
 
 from audiotrove.document import AudioDocument
