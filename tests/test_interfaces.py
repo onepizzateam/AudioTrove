@@ -9,9 +9,11 @@ class MockAudioDocument:
 def test_audio_filter_interface():
     import pytest
 
+    class MyFilter(AudioFilter):
+        pass
+
     with pytest.raises(TypeError):
-        class MyFilter(AudioFilter):
-            pass
+        MyFilter()
 
     class ConcreteFilter(AudioFilter):
         def filter(self, doc: MockAudioDocument) -> bool:
@@ -28,10 +30,11 @@ def test_audio_filter_interface():
 def test_audio_transformer_interface():
     import pytest
 
-    with pytest.raises(TypeError):
-        class MyTransformer(AudioTransformer):
-            pass
+    class MyTransformer(AudioTransformer):
+        pass
 
+    with pytest.raises(TypeError):
+        MyTransformer()
     class ConcreteTransformer(AudioTransformer):
         def transform(self, doc: MockAudioDocument) -> MockAudioDocument:
             return doc
