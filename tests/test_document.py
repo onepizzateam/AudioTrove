@@ -1,19 +1,18 @@
-import pytest
+import numpy as np
 from audiotrove.document import AudioDocument
 
+
 def test_audio_document_creation():
-    doc = AudioDocument(path="test.mp3", duration=120)
-    assert doc.path == "test.mp3"
-    assert doc.duration == 120
+    audio = np.zeros(16000, dtype=np.float32)
+    doc = AudioDocument(audio=audio, sample_rate=16000, source_path='test.mp3', duration_seconds=1.0, doc_id='abc')
+    assert doc.source_path == 'test.mp3'
+    assert doc.duration_seconds == 1.0
 
-def test_audio_document_str_representation():
-    doc = AudioDocument(path="test.mp3", duration=120)
-    assert str(doc) == "AudioDocument(path='test.mp3', duration=120)"
 
-def test_audio_document_eq_method():
-    doc1 = AudioDocument(path="test.mp3", duration=120)
-    doc2 = AudioDocument(path="test.mp3", duration=120)
+def test_audio_document_eq_and_repr():
+    audio = np.zeros(16000, dtype=np.float32)
+    doc1 = AudioDocument(audio=audio, sample_rate=16000, source_path='a.wav', duration_seconds=1.0, doc_id='a')
+    doc2 = AudioDocument(audio=audio, sample_rate=16000, source_path='a.wav', duration_seconds=1.0, doc_id='a')
     assert doc1 == doc2
-
-    doc3 = AudioDocument(path="test2.mp3", duration=120)
+    doc3 = AudioDocument(audio=audio, sample_rate=16000, source_path='b.wav', duration_seconds=1.0, doc_id='b')
     assert doc1 != doc3

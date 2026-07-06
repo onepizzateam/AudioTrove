@@ -1,10 +1,128 @@
-[ ] AudioDocument tests
-[ ] Base interface tests
-[ ] JSONL writer
-[ ] Audio reader
-[ ] Sequential executor
-[ ] VAD filter
-[ ] SNR filter
-[ ] CLI
-[ ] CI cleanup
-[ ] v0 release
+[ ] HEAVY RUNS (manual):
+[ ] - Benchmark Silero VAD inference on fixtures (downloads model, heavy CPU). Run locally and record results in `benchmarks/phase0_baseline.json`.
+[ ] - Full end-to-end curation run on large corpus (10k+ clips). Runs may require PyTorch downloads and extended CPU time.
+[ ] These tasks are NOT executed by the automated Phase 0 implementation and must be run manually by the user.
+
+-- DEVELOPER PLAY-BY-PLAY: How to test, debug, and take over Phase 0 --
+
+Overview of what was implemented (Phase 0 core)
+- `audiotrove/document.py`: `AudioDocument` dataclass (audio, sample_rate, source_path, duration_seconds, doc_id, metadata).
+- `audiotrove/base.py`: `AudioFilter` and `AudioTransformer` abstract base classes.
+- `audiotrove/executor/local.py`: sequential `LocalExecutor` with SQLite checkpointing (resumable run).
+- `audiotrove/io/readers.py`: `LocalAudioReader` (fsspec + torchaudio; resample/downmix; returns `AudioDocument`).
+- `audiotrove/io/writers.py`: `JSONLWriter` (append JSONL manifest entries).
+- `audiotrove/filters/vad.py`: `SileroVADFilter` (lazy-load Silero via `torch.hub`, energy fallback if unavailable).
+- `audiotrove/filters/snr.py`: `SNRFilter` (VAD-based SNR estimation + energy fallback).
+- `audiotrove/cli/main.py`: CLI skeleton (`curate`, `inspect`) using `click` + `rich`.
+- Tests updated under `tests/` to match the new `AudioDocument` signature.
+
+Preconditions (developer environment)
+- Python 3.10+ recommended.
+- Optional but recommended: create a virtualenv and install dev deps.
+	Windows PowerShell example:
+	```powershell
+	python -m venv .venv
+	.\.venv\Scripts\Activate.ps1
+	python -m pip install --upgrade pip
+	pip install -e .[dev]
+	```
+- If `pip install -e .[dev]` fails for `torch/torchaudio` on Windows, install CPU wheels directly:
+	```powershell
+	pip install torch --index-url https://download.pytorch.org/whl/cpu
+	pip install torchaudio --index-url https://download.pytorch.org/whl/cpu
+	```
+
+Quick test commands
+- Run full test suite:
+	```powershell
+	python -m pytest -v
+	```
+- Run a single test module during development:
+	```powershell
+	python -m pytest tests/test_writer.py -q
+	```
+
+If tests fail: step-by-step debug workflow
+1) Reproduce failure locally and capture full stack trace (use `-vv`).
+2) Identify missing dependency: common failures are `ModuleNotFoundError: pytest` or `torchaudio` or `fsspec`.
+	 - Fix: `pip install pytest` or `pip install fsspec` or install `torch/torchaudio` as above.
+3) If failing test references audio I/O (reader/writer):
+	 - Confirm `torchaudio` can import and `torchaudio.load` works in REPL.
+	 - Run a small snippet in Python to load a local WAV and build an `AudioDocument`:
+		 ```python
+		 import numpy as np
+		 import torchaudio
+		 from audiotrove.io.readers import LocalAudioReader
+		 r = LocalAudioReader('tests/fixtures/*.wav')
+		 for doc in r:
+				 print(doc.source_path, doc.sample_rate, doc.duration_seconds)
+		 ```
+4) If VAD tests fail due to missing model download or network issue:
+	 - The `SileroVADFilter` lazy-loads via `torch.hub`. Ensure network access or use the energy-fallback path.
+	 - To force fallback for debugging, temporarily comment out the `torch.hub.load` call in `audiotrove/filters/vad.py` and run tests.
+5) For failing numerical assertions (SNR values, ratios):
+	 - Print `doc.metadata` after filter runs to inspect timestamps and computed values.
+	 - Example debug snippet:
+		 ```python
+		 from audiotrove.filters.vad import SileroVADFilter
+		 from audiotrove.filters.snr import SNRFilter
+		 # construct AudioDocument `doc` as above
+		 vad = SileroVADFilter(min_speech_ratio=0.0)
+		 vad.filter(doc)
+		 print('VAD metadata:', doc.metadata)
+		 snr = SNRFilter(min_snr_db=0)
+		 snr.filter(doc)
+		 print('SNR metadata:', doc.metadata)
+		 ```
+6) If the executor run behaves unexpectedly:
+	 - Verify `doc.doc_id` values are unique and deterministic: run `from audiotrove.utils.hashing import make_doc_id` to inspect.
+	 - Inspect the SQLite checkpoint DB: `sqlite3 path/to/checkpoint.db 'SELECT * FROM processed LIMIT 10;'` or use Python's `sqlite3` module.
+
+How to run the CLI locally for quick manual smoke tests
+- Use the module directly (no installation needed):
+	```powershell
+	python -m audiotrove.cli.main inspect tests/fixtures
+	python -m audiotrove.cli.main curate tests/fixtures output_dir --vad-threshold 0.1 --snr-min 0 --workers 1
+	```
+- `curate` currently prints a placeholder; to test end-to-end behavior construct a small script that instantiates `LocalExecutor`, `LocalAudioReader`, pipeline filters, and `JSONLWriter`:
+	```python
+	from audiotrove.io.readers import LocalAudioReader
+	from audiotrove.io.writers import JSONLWriter
+	from audiotrove.filters.vad import SileroVADFilter
+	from audiotrove.filters.snr import SNRFilter
+	from audiotrove.executor.local import LocalExecutor
+
+	reader = LocalAudioReader('tests/fixtures/*.wav')
+	writer = JSONLWriter('out/manifest.jsonl')
+	pipeline = [SileroVADFilter(min_speech_ratio=0.0), SNRFilter(min_snr_db=0.0)]
+	exe = LocalExecutor(pipeline=pipeline, checkpoint_path='out/checkpoint.db')
+	stats = exe.run(reader, writer)
+	print(stats)
+	```
+
+Guidance for adding real audio fixtures (recommended)
+- You preferred real-world fixtures. To add them:
+	1. Place small WAV files (~5s) into `tests/fixtures/` named as in ROADMAP (speech_clean.wav, speech_noisy.wav, silence.wav, music.wav, corrupt.wav).
+	2. Update tests to reference these fixtures (tests currently generate synthetic audio).
+	3. Re-run `pytest` and iterate on failing numeric thresholds.
+
+Recommended small edits for easier debugging
+- Add logging to filters at `INFO` level to report `doc_id`, `vad_speech_ratio`, and `snr_db`.
+- Temporarily set `SileroVADFilter.min_speech_ratio=0.0` during debugging to ensure VAD metadata is always present.
+
+Where to look for the code you will edit
+- `audiotrove/document.py`
+- `audiotrove/base.py`
+- `audiotrove/io/readers.py`
+- `audiotrove/io/writers.py`
+- `audiotrove/filters/vad.py`
+- `audiotrove/filters/snr.py`
+- `audiotrove/executor/local.py`
+- `audiotrove/cli/main.py`
+
+If you want me to make the following small developer conveniences, tell me which to add:
+- Add `logging` instead of prints, configured via module-level logger.
+- Add a `--dry-run` flag to `curate` that prints pipeline stats without writing outputs.
+- Add a small `scripts/debug_sample.py` script that loads one fixture and runs the pipeline, printing metadata.
+
+End of play-by-play. Run the checklist above and tell me any failing tests or stack traces you want me to fix next.
