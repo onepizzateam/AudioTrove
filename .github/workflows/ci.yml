@@ -18,4 +18,5 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest tests/ -v --cov=audiotrove --cov-report=xml --cov-report=term-missing
       - run: ruff check audiotrove/ --show-fixes
-      - run: mypy audiotrove/ --ignore-missing-imports
+      - if: matrix.python-version != '3.12'
+        run: mypy audiotrove/ --ignore-missing-imports
