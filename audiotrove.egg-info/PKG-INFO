@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: audiotrove
+Version: 0.0.1
+Summary: Composable audio dataset curation pipeline
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: torch
+Requires-Dist: torchaudio
+Requires-Dist: fsspec
+Requires-Dist: click
+Requires-Dist: rich
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"

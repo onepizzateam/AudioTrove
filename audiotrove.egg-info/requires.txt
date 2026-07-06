@@ -1,0 +1,11 @@
+numpy
+torch
+torchaudio
+fsspec
+click
+rich
+
+[dev]
+pytest
+ruff
+mypy
