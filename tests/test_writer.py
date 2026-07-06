@@ -1,6 +1,4 @@
 import json
-import numpy as np
-from pathlib import Path
 
 from audiotrove.document import AudioDocument
 from audiotrove.io.writers import JSONLWriter

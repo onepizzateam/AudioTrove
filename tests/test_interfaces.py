@@ -7,8 +7,7 @@ class MockAudioDocument:
         pass
 
 def test_audio_filter_interface():
-    import pytest
-
+    # NOTE: `pytest` is imported at module scope; do not re-import here.
     class MyFilter(AudioFilter):
         pass
 
@@ -28,8 +27,7 @@ def test_audio_filter_interface():
     assert hasattr(ConcreteFilter, 'name')
 
 def test_audio_transformer_interface():
-    import pytest
-
+    # NOTE: `pytest` is imported at module scope; do not re-import here.
     class MyTransformer(AudioTransformer):
         pass
 
