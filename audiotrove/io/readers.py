@@ -46,7 +46,7 @@ class LocalAudioReader:
                 # Log and continue
                 yield None
 
-    def _load(self, path: str, fs) -> AudioDocument:
+    def _load(self, path: str, fs) -> Optional[AudioDocument]:
         if torchaudio is None:
             raise RuntimeError("torchaudio is required to load audio files")
 

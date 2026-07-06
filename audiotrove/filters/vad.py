@@ -1,9 +1,13 @@
 """
 Voice activity detection.
 """
-import torch
 import numpy as np
-from typing import Optional
+
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 from audiotrove.base import AudioFilter
 from audiotrove.document import AudioDocument
@@ -22,6 +26,8 @@ class SileroVADFilter(AudioFilter):
     @property
     def model(self):
         if self._model is None:
+            if not HAS_TORCH:
+                return None
             # Lazy-load silero vad model
             try:
                 self._model, utils = torch.hub.load(
@@ -35,12 +41,28 @@ class SileroVADFilter(AudioFilter):
         return self._model
 
     def _energy_vad(self, audio: np.ndarray, sr: int):
-        # Simple energy-based VAD fallback
+        # Improved energy-based VAD fallback that better detects speech
         frame = self.window_size
         energies = np.array([np.mean(audio[i:i+frame] ** 2)
                              for i in range(0, len(audio), frame)])
-        thresh = np.percentile(energies, 75) * 0.5
+        
+        # Get statistics
+        mean_energy = np.mean(energies)
+        std_energy = np.std(energies)
+        
+        # If energy is very low everywhere, it's silence
+        if mean_energy < 1e-4:
+            return []
+        
+        # Use a more robust threshold: mean + std (roughly 68th percentile)
+        thresh = mean_energy + std_energy
+        
         speech_frames = energies > thresh
+        
+        # If less than 10% of frames above threshold, probably no speech
+        if np.sum(speech_frames) / len(speech_frames) < 0.1:
+            return []
+        
         timestamps = []
         idx = 0
         for flag in speech_frames:
@@ -57,7 +79,7 @@ class SileroVADFilter(AudioFilter):
 
         timestamps = None
         model = self.model
-        if model is not None and hasattr(self, '_utils'):
+        if model is not None and hasattr(self, '_utils') and HAS_TORCH:
             try:
                 get_speech_timestamps = getattr(self._utils, 'get_speech_timestamps', None)
                 if get_speech_timestamps is not None:
@@ -86,7 +108,7 @@ class SileroVADFilter(AudioFilter):
             return False
 
         speech_samples = sum(t['end'] - t['start'] for t in timestamps)
-        ratio = speech_samples / len(audio)
+        ratio = float(speech_samples) / float(len(audio))
         doc.metadata['vad_speech_ratio'] = round(ratio, 4)
         doc.metadata['vad_speech_timestamps'] = timestamps
-        return ratio >= self.min_speech_ratio
+        return bool(ratio >= self.min_speech_ratio)

@@ -5,17 +5,41 @@ description = "Composable audio dataset curation pipeline"
 requires-python = ">=3.10"
 
 dependencies = [
-    "numpy",
-    "torch",
-    "torchaudio",
-    "fsspec",
-    "click",
-    "rich",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "numpy>=1.24.0",
+    "fsspec>=2023.1.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
+s3 = ["s3fs>=2023.1.0"]
+gcs = ["gcsfs>=2023.1.0"]
+diarize = ["pyannote.audio>=3.1.0"]
+embed-dedup = ["faiss-cpu>=1.7.4", "speechbrain>=1.0.0"]
 dev = [
     "pytest",
+    "pytest-cov",
     "ruff",
     "mypy",
+    "click[testing]",
 ]
+
+[project.scripts]
+audiotrove = "audiotrove.cli.main:cli"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=audiotrove --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

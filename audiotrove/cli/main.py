@@ -1,5 +1,7 @@
 import click
 from rich.console import Console
+from rich.table import Table
+from pathlib import Path
 
 console = Console()
 
@@ -14,26 +16,127 @@ def cli():
 @cli.command()
 @click.argument('input_path')
 @click.argument('output_path')
-@click.option('--vad-threshold', default=0.3, show_default=True,
+@click.option('--vad-threshold', default=0.3, type=float, show_default=True,
               help='Minimum speech ratio (0-1) to keep a clip.')
-@click.option('--snr-min', default=15.0, show_default=True,
+@click.option('--snr-min', default=15.0, type=float, show_default=True,
               help='Minimum SNR in dB to keep a clip.')
-@click.option('--workers', default=1, show_default=True)
+@click.option('--workers', default=1, type=int, show_default=True,
+              help='Number of worker processes (Phase 1+).')
 @click.option('--format', 'output_format', 
               type=click.Choice(['jsonl']),
-              default='jsonl', show_default=True)
+              default='jsonl', show_default=True,
+              help='Output format.')
 @click.option('--checkpoint', default=None,
               help='Path to checkpoint database for resumable runs.')
 def curate(input_path, output_path, vad_threshold, snr_min, workers, output_format, checkpoint):
-    """Curate audio files from INPUT_PATH into OUTPUT_PATH."""
-    console.print("Curate not yet fully implemented in this local build.")
+    """Curate audio files from INPUT_PATH into OUTPUT_PATH.
+    
+    Applies VAD and SNR filters, writes JSONL manifest.
+    """
+    from audiotrove.io.readers import LocalAudioReader
+    from audiotrove.io.writers import JSONLWriter
+    from audiotrove.filters.vad import SileroVADFilter
+    from audiotrove.filters.snr import SNRFilter
+    from audiotrove.executor.local import LocalExecutor
+    
+    # Validate paths
+    input_p = Path(input_path)
+    output_p = Path(output_path)
+    
+    if not input_p.exists():
+        console.print(f"[red]Error: Input path does not exist: {input_path}[/red]")
+        raise SystemExit(1)
+    
+    output_p.mkdir(parents=True, exist_ok=True)
+    
+    # Build pipeline
+    pipeline = []
+    if vad_threshold < 1.0:
+        pipeline.append(SileroVADFilter(min_speech_ratio=vad_threshold))
+    if snr_min > 0:
+        pipeline.append(SNRFilter(min_snr_db=snr_min))
+    
+    if not pipeline:
+        console.print("[yellow]Warning: No filters in pipeline. All audio will pass through.[/yellow]")
+    
+    # Reader and writer
+    pattern = str(input_p / '*.wav') if input_p.is_dir() else str(input_p)
+    reader = LocalAudioReader(pattern)
+    output_manifest = output_p / 'manifest.jsonl'
+    writer = JSONLWriter(str(output_manifest))
+    
+    # Executor
+    checkpoint_db = checkpoint or str(output_p / 'checkpoint.db')
+    executor = LocalExecutor(pipeline=pipeline, num_workers=workers, checkpoint_path=checkpoint_db)
+    
+    # Run
+    console.print("[cyan]Starting curation pipeline[/cyan]")
+    console.print(f"  Input:  {input_path}")
+    console.print(f"  Output: {output_manifest}")
+    console.print(f"  Checkpoint: {checkpoint_db}")
+    console.print(f"  Filters: {', '.join(b.name for b in pipeline) or 'none'}")
+    console.print()
+    
+    stats = executor.run(reader, writer)
+    
+    # Print results
+    table = Table(title="Curation Results")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", style="magenta")
+    table.add_row("Processed", str(stats['processed']))
+    table.add_row("Kept", str(stats['kept']))
+    table.add_row("Filtered", str(stats['skipped']))
+    console.print(table)
+    
+    console.print(f"[green]✓ Manifest written to {output_manifest}[/green]")
 
 
 @cli.command()
 @click.argument('input_path')
+@click.option('--limit', default=10, type=int, show_default=True,
+              help='Show stats for first N files.')
 def inspect(input_path):
-    """Show statistics for an audio directory without filtering."""
-    console.print(f"Inspect not implemented: {input_path}")
+    """Show statistics for an audio directory without filtering.
+    
+    Displays duration distribution, format counts, and basic metadata.
+    """
+    from audiotrove.io.readers import LocalAudioReader
+    from pathlib import Path
+    import numpy as np
+    
+    input_p = Path(input_path)
+    if not input_p.exists():
+        console.print(f"[red]Error: Input path does not exist: {input_path}[/red]")
+        raise SystemExit(1)
+    
+    pattern = str(input_p / '*.wav') if input_p.is_dir() else str(input_p)
+    reader = LocalAudioReader(pattern, min_duration_seconds=0.0, max_duration_seconds=None)
+    
+    durations = []
+    count = 0
+    for doc in reader:
+        if doc is None:
+            continue
+        durations.append(doc.duration_seconds)
+        count += 1
+        if count >= 100:  # Limit to 100 for speed
+            break
+    
+    if not durations:
+        console.print("[yellow]No audio files found.[/yellow]")
+        return
+    
+    durations = np.array(durations)
+    
+    table = Table(title=f"Audio Directory Stats (sampled {len(durations)} files)")
+    table.add_column("Statistic", style="cyan")
+    table.add_column("Value", style="magenta")
+    table.add_row("Count", str(len(durations)))
+    table.add_row("Duration (mean)", f"{durations.mean():.2f}s")
+    table.add_row("Duration (min)", f"{durations.min():.2f}s")
+    table.add_row("Duration (max)", f"{durations.max():.2f}s")
+    table.add_row("Duration (median)", f"{np.median(durations):.2f}s")
+    console.print(table)
 
 
 if __name__ == '__main__':

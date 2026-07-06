@@ -1,0 +1,2 @@
+[console_scripts]
+audiotrove = audiotrove.cli.main:cli

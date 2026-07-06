@@ -5,7 +5,6 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from audiotrove.document import AudioDocument
 
 
 class LocalExecutor:

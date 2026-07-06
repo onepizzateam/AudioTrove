@@ -1,22 +1,21 @@
 name: CI
 
-on:
-  - push
-  - pull_request
+on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
+          python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-
-      - run: pytest
-
-      - run: ruff check .
+      - run: pytest tests/ -v --cov=audiotrove --cov-report=xml --cov-report=term-missing
+      - run: ruff check audiotrove/ --show-fixes
+      - run: mypy audiotrove/ --ignore-missing-imports

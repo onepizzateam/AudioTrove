@@ -3,13 +3,25 @@ Name: audiotrove
 Version: 0.0.1
 Summary: Composable audio dataset curation pipeline
 Requires-Python: >=3.10
-Requires-Dist: numpy
-Requires-Dist: torch
-Requires-Dist: torchaudio
-Requires-Dist: fsspec
-Requires-Dist: click
-Requires-Dist: rich
+Requires-Dist: torch>=2.0.0
+Requires-Dist: torchaudio>=2.0.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: fsspec>=2023.1.0
+Requires-Dist: click>=8.1.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: pyyaml>=6.0
+Provides-Extra: s3
+Requires-Dist: s3fs>=2023.1.0; extra == "s3"
+Provides-Extra: gcs
+Requires-Dist: gcsfs>=2023.1.0; extra == "gcs"
+Provides-Extra: diarize
+Requires-Dist: pyannote.audio>=3.1.0; extra == "diarize"
+Provides-Extra: embed-dedup
+Requires-Dist: faiss-cpu>=1.7.4; extra == "embed-dedup"
+Requires-Dist: speechbrain>=1.0.0; extra == "embed-dedup"
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
 Requires-Dist: ruff; extra == "dev"
 Requires-Dist: mypy; extra == "dev"
+Requires-Dist: click[testing]; extra == "dev"
