@@ -1,6 +1,7 @@
 """
 Voice activity detection.
 """
+import logging
 import numpy as np
 
 try:
@@ -11,6 +12,8 @@ except ImportError:
 
 from audiotrove.base import AudioFilter
 from audiotrove.document import AudioDocument
+
+logger = logging.getLogger(__name__)
 
 
 class SileroVADFilter(AudioFilter):
@@ -35,8 +38,9 @@ class SileroVADFilter(AudioFilter):
                 )
                 # utils may contain get_speech_timestamps
                 self._utils = utils
-            except Exception:
-                # If model cannot be loaded, leave as None and fallback
+            except Exception as e:
+                # If model cannot be loaded, log the failure and fallback
+                logger.warning(f"Failed to load Silero VAD model: {e}. Falling back to energy-based VAD.")
                 self._model = None
         return self._model
 
@@ -78,6 +82,7 @@ class SileroVADFilter(AudioFilter):
         sr = doc.sample_rate
 
         timestamps = None
+        backend_used = None
         model = self.model
         if model is not None and hasattr(self, '_utils') and HAS_TORCH:
             try:
@@ -96,19 +101,24 @@ class SileroVADFilter(AudioFilter):
                     for t in timestamps:
                         ts.append({'start': int(t['start']), 'end': int(t['end'])})
                     timestamps = ts
-            except Exception:
+                    backend_used = 'silero'
+            except Exception as e:
+                logger.warning(f"Silero VAD inference failed for {doc.source_path}: {e}. Falling back to energy-based VAD.")
                 timestamps = None
 
         if timestamps is None:
             timestamps = self._energy_vad(audio, sr)
+            backend_used = 'energy_fallback'
 
         if not timestamps:
             doc.metadata['vad_speech_ratio'] = 0.0
             doc.metadata['vad_speech_timestamps'] = []
+            doc.metadata['vad_backend'] = backend_used or 'energy_fallback'
             return False
 
         speech_samples = sum(t['end'] - t['start'] for t in timestamps)
         ratio = float(speech_samples) / float(len(audio))
         doc.metadata['vad_speech_ratio'] = round(ratio, 4)
         doc.metadata['vad_speech_timestamps'] = timestamps
+        doc.metadata['vad_backend'] = backend_used or 'energy_fallback'
         return bool(ratio >= self.min_speech_ratio)
