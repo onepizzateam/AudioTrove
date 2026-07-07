@@ -3,10 +3,9 @@ Audio writers.
 """
 
 from pathlib import Path
-import json  # Import the json module
+import json
 
 from audiotrove.document import AudioDocument
-from audiotrove.utils.hashing import make_doc_id
 
 class JSONLWriter:
     def __init__(self, output_path: str):
@@ -15,7 +14,7 @@ class JSONLWriter:
 
     def write(self, doc: AudioDocument) -> None:
         data = {
-            "doc_id": make_doc_id(doc.source_path),
+            "doc_id": doc.doc_id,
             "source_path": doc.source_path,
             "sample_rate": doc.sample_rate,
             "duration_seconds": doc.duration_seconds,
