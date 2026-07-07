@@ -17,3 +17,7 @@ build/
 data/
 outputs/
 checkpoints/
+
+.coverage
+coverage.xml
+*.egg-info/
