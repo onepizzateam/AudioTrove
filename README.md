@@ -4,7 +4,7 @@
 
 ## The Problem
 
-Every lab training a speech model, building a TTS system, or curating multilingual ASR data reimplements audio pipeline preprocessing from scratch. They write custom loaders, glue together VAD and SNR filters, handle checkpointing for million-hour corpora, and debug subtle data corruption bugs. AudioTrove provides a **composable, battle-tested, open-source foundation** so you can focus on your data, not your pipeline infrastructure.
+Audio dataset curation is tedious and repetitive. While frameworks like **NVIDIA NeMo Curator** and **Alibaba Data-Juicer** offer comprehensive ML pipelines, they add significant complexity for teams that just need practical, composable filters (VAD, SNR, deduplication) without the heavy stack. AudioTrove is a **lightweight alternative** designed to be straightforward to understand, extend, and run on modest compute — so you can focus on your data, not infrastructure.
 
 ## Installation
 
