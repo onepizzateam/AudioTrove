@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 class LocalExecutor:
     """Sequential local executor with simple SQLite checkpointing.
 
-    This intentionally runs sequentially for Phase 0. It records processed
-    `doc_id` values in a SQLite DB so runs can be resumed.
+    This intentionally runs sequentially for Phase 0. Parallelism is deferred
+    to Phase 1. It records processed `doc_id` values in a SQLite DB so runs
+    can be resumed.
     """
 
-    def __init__(self, pipeline: list, num_workers: int = 1, checkpoint_path: Optional[str] = None):
+    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None):
         self.pipeline = pipeline
-        self.num_workers = num_workers
         self.checkpoint_path = checkpoint_path
         self._conn = None
 
