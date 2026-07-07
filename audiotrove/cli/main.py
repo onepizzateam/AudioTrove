@@ -2,15 +2,20 @@ import click
 from rich.console import Console
 from rich.table import Table
 from pathlib import Path
+import logging
 
 console = Console()
 
 
 @click.group()
 @click.version_option()
-def cli():
+@click.option('-v', '--verbose', is_flag=True, help='Enable verbose (DEBUG) logging.')
+def cli(verbose):
     """AudioTrove: Open-source audio data curation pipeline."""
-    pass
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.WARNING)
 
 
 @cli.command()
