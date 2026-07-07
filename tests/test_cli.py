@@ -215,6 +215,17 @@ def test_curate_multi_format():
     except ImportError:
         pytest.skip("torchaudio or scipy not available")
     
+    # Check if torchaudio can actually load WAV files (may require TorchCodec on some systems)
+    with tempfile.TemporaryDirectory() as test_dir:
+        test_file = Path(test_dir) / "test.wav"
+        sr = 16000
+        test_audio = (np.sin(2 * np.pi * 440 * np.arange(sr)) / sr * 32767).astype(np.int16)
+        wavfile.write(str(test_file), sr, test_audio)
+        try:
+            _ = torchaudio.load(str(test_file))
+        except Exception as e:
+            pytest.skip(f"torchaudio cannot load WAV files in this environment: {e}")
+    
     runner = CliRunner()
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -223,7 +234,7 @@ def test_curate_multi_format():
         input_dir.mkdir()
         output_dir.mkdir()
         
-        # Create synthetic WAV files using scipy to avoid TorchCodec dependency
+        # Create synthetic WAV files using scipy
         sr = 16000
         duration_s = 1.0
         samples = int(sr * duration_s)
@@ -258,7 +269,7 @@ def test_curate_multi_format():
         with open(manifest_path) as f:
             lines = [json.loads(line) for line in f if line.strip()]
         
-        # Should have 2 documents (one from WAV, one from FLAC)
+        # Should have 2 documents
         assert len(lines) == 2, f"Expected 2 documents in manifest, got {len(lines)}"
 
 
