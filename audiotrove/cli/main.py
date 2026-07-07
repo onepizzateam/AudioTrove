@@ -107,7 +107,7 @@ def curate(input_path, output_path, vad_threshold, snr_min, output_format, check
 @click.argument('input_path')
 @click.option('--limit', default=10, type=int, show_default=True,
               help='Show stats for first N files.')
-def inspect(input_path):
+def inspect(input_path, limit):
     """Show statistics for an audio directory without filtering.
     
     Displays duration distribution, format counts, and basic metadata.
@@ -131,7 +131,7 @@ def inspect(input_path):
             continue
         durations.append(doc.duration_seconds)
         count += 1
-        if count >= 100:  # Limit to 100 for speed
+        if count >= limit:  # Respect limit parameter
             break
     
     if not durations:

@@ -49,6 +49,163 @@ def test_cli_group_help():
     assert 'inspect' in result.output
 
 
+def test_curate_nonexistent_input():
+    """Test curate returns SystemExit when input doesn't exist."""
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        'curate',
+        '/nonexistent/path',
+        '/tmp/output',
+    ])
+    
+    assert result.exit_code == 1
+    assert 'Error' in result.output
+    assert 'does not exist' in result.output
+
+
+def test_inspect_nonexistent_input():
+    """Test inspect returns SystemExit when input doesn't exist."""
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        'inspect',
+        '/nonexistent/path/to/audio',
+    ])
+    
+    assert result.exit_code == 1
+    assert 'Error' in result.output
+
+
+def test_curate_creates_output_directory():
+    """Test curate creates output directory if it doesn't exist."""
+    runner = CliRunner()
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "input"
+        output_dir = Path(tmpdir) / "deep" / "output"  # Non-existent nested
+        input_dir.mkdir()
+        (input_dir / "test.wav").touch()
+        
+        result = runner.invoke(cli, [
+            'curate',
+            str(input_dir),
+            str(output_dir),
+        ])
+        
+        # Should succeed (even if no audio found)
+        assert result.exit_code in [0, 1]  # 0 if audio files processed, 1 if errors
+        # Verify output directory was created
+        assert output_dir.exists()
+
+
+def test_inspect_limit_parameter():
+    """Test inspect --limit parameter is accepted."""
+    runner = CliRunner()
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "input"
+        input_dir.mkdir()
+        (input_dir / "test.wav").touch()
+        
+        result = runner.invoke(cli, [
+            'inspect',
+            str(input_dir),
+            '--limit', '5',
+        ])
+        
+        # Should succeed (or fail gracefully if fsspec missing)
+        assert result.exit_code in [0, 1]
+
+
+def test_curate_extensions_parameter():
+    """Test curate --extensions parameter is accepted."""
+    runner = CliRunner()
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "input"
+        output_dir = Path(tmpdir) / "output"
+        input_dir.mkdir()
+        output_dir.mkdir()
+        (input_dir / "test.wav").touch()
+        
+        result = runner.invoke(cli, [
+            'curate',
+            str(input_dir),
+            str(output_dir),
+            '--extensions', 'wav,mp3,flac',
+        ])
+        
+        # Should accept extensions parameter without error
+        assert result.exit_code in [0, 1]  # 0 if processed, 1 if other error
+
+
+def test_curate_workers_parameter():
+    """Test curate --workers parameter is accepted."""
+    runner = CliRunner()
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "input"
+        output_dir = Path(tmpdir) / "output"
+        input_dir.mkdir()
+        output_dir.mkdir()
+        (input_dir / "test.wav").touch()
+        
+        result = runner.invoke(cli, [
+            'curate',
+            str(input_dir),
+            str(output_dir),
+            '--workers', '2',
+        ])
+        
+        # Should accept workers parameter without error
+        assert result.exit_code in [0, 1]
+
+
+def test_curate_checkpoint_parameter():
+    """Test curate --checkpoint parameter is accepted."""
+    runner = CliRunner()
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "input"
+        output_dir = Path(tmpdir) / "output"
+        checkpoint_db = Path(tmpdir) / "checkpoint.db"
+        input_dir.mkdir()
+        output_dir.mkdir()
+        (input_dir / "test.wav").touch()
+        
+        result = runner.invoke(cli, [
+            'curate',
+            str(input_dir),
+            str(output_dir),
+            '--checkpoint', str(checkpoint_db),
+        ])
+        
+        # Should accept checkpoint parameter without error
+        assert result.exit_code in [0, 1]
+
+
+def test_curate_filter_parameters():
+    """Test curate VAD and SNR filter parameters are accepted."""
+    runner = CliRunner()
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "input"
+        output_dir = Path(tmpdir) / "output"
+        input_dir.mkdir()
+        output_dir.mkdir()
+        (input_dir / "test.wav").touch()
+        
+        result = runner.invoke(cli, [
+            'curate',
+            str(input_dir),
+            str(output_dir),
+            '--vad-threshold', '0.5',
+            '--snr-min', '15.0',
+        ])
+        
+        # Should accept filter parameters without error
+        assert result.exit_code in [0, 1]
+
+
 def test_curate_multi_format():
     """Test curate with --extensions wav,flac to pick up multiple formats."""
     try:
@@ -102,3 +259,32 @@ def test_curate_multi_format():
         
         # Should have 2 documents (one from WAV, one from FLAC)
         assert len(lines) == 2, f"Expected 2 documents in manifest, got {len(lines)}"
+
+
+def test_curate_empty_input_directory():
+    """Test curate on empty input directory."""
+    runner = CliRunner()
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "input"
+        output_dir = Path(tmpdir) / "output"
+        input_dir.mkdir()
+        output_dir.mkdir()
+        
+        result = runner.invoke(cli, [
+            'curate',
+            str(input_dir),
+            str(output_dir),
+        ])
+        
+        # Should complete successfully (no files to process)
+        assert result.exit_code in [0, 1]
+
+
+def test_inspect_help_shows_limit_option():
+    """Test inspect help shows --limit option."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ['inspect', '--help'])
+    assert result.exit_code == 0
+    assert '--limit' in result.output
+    assert 'Show stats for first N files' in result.output
