@@ -6,7 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "audiotrove"
 dynamic = ["version"]
 description = "Composable audio dataset curation pipeline"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+authors = [{name = "Palak Jha"}]
+keywords = ["audio", "dataset", "machine-learning", "vad", "speech-processing", "data-curation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+]
 
 dependencies = [
     "torch>=2.0.0",
