@@ -3,12 +3,13 @@
 [![CI Status](https://github.com/onepizzateam/AudioTrove/actions/workflows/ci.yml/badge.svg)](https://github.com/onepizzateam/AudioTrove/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Composable audio dataset curation. VAD, SNR filtering, and resumable checkpointing as a pip-installable pipeline instead of a full ML-curation stack.
+Composable audio dataset curation. VAD, SNR filtering, segment-level fan-out, parallel execution, and resumable checkpointing as a pip-installable pipeline instead of a full ML-curation stack.
 
 ```bash
 audiotrove curate ./raw_audio ./output \
   --vad-threshold 0.3 \
   --snr-min 15.0 \
+  --workers 4 \
   --checkpoint checkpoints/run.db
 ```
 
@@ -30,7 +31,9 @@ You point it at a directory of audio. AudioTrove runs each file through:
 
 - **VAD filtering** — Silero VAD detects speech vs. silence/music, falls back to an energy-based heuristic if Silero can't load (network, no torch.hub access). Which backend ran is recorded per-file, not hidden.
 - **SNR filtering** — signal-to-noise ratio estimated from VAD speech/non-speech segments, with an energy-percentile fallback when no VAD timestamps exist.
-- **Checkpointing** — every processed `doc_id` is recorded in SQLite. Kill the process mid-run, rerun the same command, it skips what's already done.
+- **Segment-level VAD fan-out** — `VADSegmenter` splits a file into per-speech-segment sub-documents instead of judging a whole clip at once, so one bad segment doesn't sink an otherwise-good file. Segment doc_ids are deterministic (derived from the parent doc_id + segment timing), so re-running is idempotent.
+- **Checkpointing** — every processed doc_id is recorded in SQLite. Kill the process mid-run, rerun the same command, it skips what's already done.
+- **Parallel execution** — `--workers N` fans document processing out across a `ProcessPoolExecutor`. Filters and transformers run in worker processes; the main process is the only one that touches the checkpoint database and writes the manifest, so parallel runs stay checkpoint-safe without extra coordination.
 - **JSONL manifest output** — one line per kept clip, with whatever metadata each filter attached (`vad_speech_ratio`, `snr_db`, etc.)
 
 ```json
@@ -39,9 +42,9 @@ You point it at a directory of audio. AudioTrove runs each file through:
 
 ## the problem
 
-Every lab or team curating speech data ends up writing the same glue: load audio, run VAD, run SNR, checkpoint so a crash doesn't cost 6 hours, write a manifest. NVIDIA NeMo Curator and Alibaba Data-Juicer do this and more — segment-level filtering, GPU-scale fan-out, quality-model chains — but that's real infrastructure weight if you just want the VAD+SNR+resumability part on a laptop or a single box.
+Every lab or team curating speech data ends up writing the same glue: load audio, run VAD, run SNR, checkpoint so a crash doesn't cost 6 hours, write a manifest. NVIDIA NeMo Curator and Alibaba Data-Juicer do this and more — GPU-scale fan-out, quality-model chains, distributed orchestration — but that's real infrastructure weight if you just want VAD+SNR+segmentation+resumability on a laptop or a single box.
 
-AudioTrove is the small version of that: three filter/transformer interfaces, a sequential executor, SQLite checkpointing. Not a replacement for NeMo Curator at scale — a lighter thing for the common case.
+AudioTrove is the small version of that: three filter/transformer interfaces (including fan-out), a executor that runs sequentially or across local worker processes, and SQLite checkpointing. Not a replacement for NeMo Curator at scale — a lighter thing for the common case.
 
 ## installation
 
@@ -54,6 +57,7 @@ pip install -e .
 ```
 
 Optional extras:
+
 ```bash
 pip install -e ".[s3]"          # s3:// audio paths
 pip install -e ".[gcs]"         # gs:// audio paths
@@ -71,20 +75,25 @@ Options:
   --snr-min FLOAT         Minimum SNR in dB to keep a clip. [default: 15.0]
   --format [jsonl]        Output format. [default: jsonl]
   --checkpoint PATH       Path to checkpoint database for resumable runs.
+  --workers INTEGER       Number of worker processes for parallel execution. [default: 1]
+  --extensions TEXT       Comma-separated audio file extensions to process (e.g. "wav,mp3,flac"). [default: wav]
 ```
 
 ```
 audiotrove inspect INPUT_PATH [OPTIONS]
 ```
-Shows duration distribution and file counts for a directory without filtering anything — useful before picking thresholds.
+
+Shows duration distribution and file counts for a directory without filtering anything — useful before picking thresholds. `inspect` currently only globs `.wav`; use `curate --extensions` if your corpus has mixed formats.
 
 ## architecture
 
-Three locked contracts, documented in full in [ARCHITECTURE.md](ARCHITECTURE.md):
+Four locked contracts, documented in full in `ARCHITECTURE.md`:
 
-- `AudioDocument` — canonical object: mono float32 audio, normalized sample rate, deterministic `doc_id`, a freeform `metadata` dict that filters append to.
-- `AudioFilter` / `AudioTransformer` — the only two block types. Filters return a bool, transformers return a modified doc. Stateless, so they're independently testable and reorderable.
-- `LocalExecutor` — walks reader → pipeline → writer, checkpoints each `doc_id` in SQLite, logs (not swallows) any exception a filter raises.
+- **`AudioDocument`** — canonical object: mono float32 audio, normalized sample rate, deterministic doc_id, a freeform metadata dict that filters append to.
+- **`AudioFilter`** — returns a bool. Stateless and independently testable.
+- **`AudioTransformer`** — returns exactly one modified doc.
+- **`AudioFanOutTransformer`** — returns zero, one, or many docs from a single input. This is what segmentation (`VADSegmenter`) is built on; the emitted docs get deterministic child doc_ids so re-running the pipeline is idempotent and checkpoint-safe.
+- **`LocalExecutor`** — walks reader → pipeline → writer. Runs sequentially by default (`num_workers=1`, byte-for-byte the original behavior) or fans document processing out to a `ProcessPoolExecutor` when `num_workers>1`. Checkpoints each doc_id in SQLite and logs (not swallows) any exception a filter or transformer raises.
 
 Adding a custom filter:
 
@@ -102,10 +111,10 @@ class MyCustomFilter(AudioFilter):
 
 ## current limitations
 
-- Sequential execution only — no multiprocessing yet. A `--workers` flag existed at one point and did nothing; it's been removed rather than left fake. Real parallel execution (with checkpoint-safe SQLite writes) is a Phase 1 item, see [ROADMAP.md](ROADMAP.md).
-- `.wav` only via the CLI glob pattern — other formats work if you use `LocalAudioReader` directly with a different glob, but the CLI doesn't expose it yet.
-- Whole-clip filtering, not segment-level. NeMo Curator's approach — fan out one file into per-segment tasks so a single bad segment doesn't sink the whole clip — is a better design and is on the roadmap, not yet implemented here.
-- `readers.py` is effectively untested right now (0% coverage). Load failures are logged, but the read path itself needs more test coverage before I'd trust it on messy real-world corpora.
+- **`inspect` is `.wav`-only.** `curate` accepts `--extensions` for multi-format globbing; `inspect` doesn't expose that yet.
+- **Parallel execution is process-based, not distributed.** `--workers` scales across cores on one machine via `ProcessPoolExecutor`; it doesn't fan out across machines. Fine for a laptop or a single box, not a cluster.
+- **`readers.py` correctness on messy real-world audio is still the least-battle-tested path.** Coverage is solid on the happy path and common failure cases, but if VAD or SNR filtering behaves oddly on real audio, that's the most likely place — see "PRs and issues welcome" below.
+- **No GPU batching.** VAD and SNR run per-document; there's no batched inference path for throughput on a GPU box yet.
 
 ## what AudioTrove is not
 
@@ -121,14 +130,18 @@ pytest -v
 pytest --cov=audiotrove --cov-report=html
 ```
 
-27 tests passing as of this writing. Coverage is uneven — core filters and executor are well-covered, the CLI and reader are the weak spots (see limitations above).
+62 tests passing as of this writing, ~73% overall statement coverage. Core document/filter/writer logic and the CLI are well-covered; `executor/local.py`'s parallel code paths and some `vad.py` edge branches are the areas with the most room to grow.
 
-## v0.1 scope
+## roadmap
 
-- Real parallelism in `LocalExecutor` (checkpoint-safe under multiple workers)
-- Segment-level VAD fan-out instead of whole-clip pass/fail
-- Multi-format support exposed through the CLI, not just `.wav`
-- Test coverage on `readers.py` and `cli/main.py`
+Segment-level VAD fan-out and process-parallel execution (originally slated for a later phase) have landed. What's left for the next phase:
+
+- Multi-format support in `inspect`, not just `curate`.
+- GPU-batched VAD/SNR inference for throughput.
+- Deeper test coverage on `executor/local.py`'s parallel paths and `vad.py`.
+- Distributed (multi-machine) execution — currently out of scope; see `ROADMAP.md` for the longer-term thinking here.
+
+See `ROADMAP.md` for full reasoning and phase gates.
 
 PRs and issues welcome, especially against the limitations above — if VAD or SNR filtering behaves oddly on real audio you have, an issue with a sample file is the most useful thing you can send.
 
