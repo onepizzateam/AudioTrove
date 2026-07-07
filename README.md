@@ -1,28 +1,6 @@
-# AudioTrove — Open-Source Audio Dataset Curation
+# AudioTrove 🎙️→📦
 
-**Status:** Phase 0 (Foundation complete)
-
-## The Problem
-
-Audio dataset curation is tedious and repetitive. While frameworks like **NVIDIA NeMo Curator** and **Alibaba Data-Juicer** offer comprehensive ML pipelines, they add significant complexity for teams that just need practical, composable filters (VAD, SNR, deduplication) without the heavy stack. AudioTrove is a **lightweight alternative** designed to be straightforward to understand, extend, and run on modest compute — so you can focus on your data, not infrastructure.
-
-## Installation
-
-```bash
-pip install audiotrove
-```
-
-Optional extras:
-```bash
-pip install audiotrove[s3]          # For s3:// audio paths
-pip install audiotrove[gcs]         # For gs:// audio paths
-pip install audiotrove[diarize]     # For speaker diarization (pyannote)
-pip install audiotrove[embed-dedup] # For semantic deduplication (ECAPA-TDNN)
-```
-
-## 30-Second Demo
-
-Given a directory of audio files, filter by voice activity and signal-to-noise ratio in one command:
+Composable audio dataset curation. VAD, SNR filtering, and resumable checkpointing as a pip-installable pipeline instead of a full ML-curation stack.
 
 ```bash
 audiotrove curate ./raw_audio ./output \
@@ -31,119 +9,126 @@ audiotrove curate ./raw_audio ./output \
   --checkpoint checkpoints/run.db
 ```
 
-Outputs a JSONL manifest with metadata for every kept clip:
-
-```json
-{"doc_id": "abc123", "source_path": "raw/clip1.wav", "sample_rate": 16000, "duration_seconds": 5.2, "metadata": {"vad_speech_ratio": 0.92, "snr_db": 18.5}}
-{"doc_id": "def456", "source_path": "raw/clip2.wav", "sample_rate": 16000, "duration_seconds": 3.8, "metadata": {"vad_speech_ratio": 0.88, "snr_db": 22.1}}
+```
+Curation Results
+┏━━━━━━━━━━━┳━━━━━━━┓
+┃ Metric    ┃ Count ┃
+┡━━━━━━━━━━━╇━━━━━━━┩
+│ Processed │  1000 │
+│ Kept      │   450 │
+│ Filtered  │   550 │
+└───────────┴───────┘
+✓ Manifest written to output/manifest.jsonl
 ```
 
-## Before and After
+## what it actually does
 
-**Input:** 100 hours of raw podcast audio (mixed speech, music, noise, silence).
+You point it at a directory of audio. AudioTrove runs each file through:
 
-**After Phase 0 curation:**
-- VAD filters out music and silence (~40% removed)
-- SNR filters keep only clean speech (~15% removed)
-- Checkpoint DB allows resumable runs (crash-safe)
-- **Result:** ~45 hours of speech-rich, clean data ready for ASR/TTS training
+- **VAD filtering** — Silero VAD detects speech vs. silence/music, falls back to an energy-based heuristic if Silero can't load (network, no torch.hub access). Which backend ran is recorded per-file, not hidden.
+- **SNR filtering** — signal-to-noise ratio estimated from VAD speech/non-speech segments, with an energy-percentile fallback when no VAD timestamps exist.
+- **Checkpointing** — every processed `doc_id` is recorded in SQLite. Kill the process mid-run, rerun the same command, it skips what's already done.
+- **JSONL manifest output** — one line per kept clip, with whatever metadata each filter attached (`vad_speech_ratio`, `snr_db`, etc.)
 
-## Core Architecture
+```json
+{"doc_id": "abc123", "source_path": "raw/clip1.wav", "sample_rate": 16000, "duration_seconds": 5.2, "metadata": {"vad_speech_ratio": 0.92, "vad_backend": "silero", "snr_db": 18.5}}
+```
 
-AudioTrove is built on three locked contracts:
+## the problem
 
-1. **AudioDocument**: canonical object carrying audio (mono, float32, 16kHz), metadata, and deterministic `doc_id`.
-2. **Blocks**: `AudioFilter` (returns bool) and `AudioTransformer` (returns new doc). Stateless, reorderable, independently testable.
-3. **Executor**: manages parallelism, checkpointing, and pipeline orchestration. Blocks do not know they are being parallelized.
+Every lab or team curating speech data ends up writing the same glue: load audio, run VAD, run SNR, checkpoint so a crash doesn't cost 6 hours, write a manifest. NVIDIA NeMo Curator and Alibaba Data-Juicer do this and more — segment-level filtering, GPU-scale fan-out, quality-model chains — but that's real infrastructure weight if you just want the VAD+SNR+resumability part on a laptop or a single box.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed contracts and rationale.
+AudioTrove is the small version of that: three filter/transformer interfaces, a sequential executor, SQLite checkpointing. Not a replacement for NeMo Curator at scale — a lighter thing for the common case.
 
-## What AudioTrove IS NOT
+## installation
 
-- **Not a model training framework.** Use PyTorch, TensorFlow, or HuggingFace Transformers to train models; AudioTrove prepares your data.
-- **Not audio synthesis or ASR/TTS.** No generation, no transcription. Pure data filtering and curation.
-- **Not a database system.** JSONL + SQLite checkpoint, not a distributed query engine. For 10k+ hour corpora, consider WebDataset or HDF5 formats.
-- **Not a replacement for librosa.** We don't do spectral analysis, MFCCs, or advanced signal processing. We do high-level filtering and I/O.
+Not on PyPI yet. Install from source:
 
-## Phase 0 Components
+```bash
+git clone https://github.com/onepizzateam/AudioTrove
+cd AudioTrove
+pip install -e .
+```
 
-- ✅ `AudioDocument` dataclass
-- ✅ `AudioFilter` and `AudioTransformer` abstract base classes
-- ✅ `LocalExecutor` with SQLite checkpointing
-- ✅ `LocalAudioReader` (fsspec + torchaudio; resample/downmix)
-- ✅ `JSONLWriter` (append manifest entries)
-- ✅ `SileroVADFilter` (voice activity detection, lazy-load)
-- ✅ `SNRFilter` (signal-to-noise ratio estimation)
-- ✅ CLI skeleton (`curate`, `inspect` commands)
+Optional extras:
+```bash
+pip install -e ".[s3]"          # s3:// audio paths
+pip install -e ".[gcs]"         # gs:// audio paths
+pip install -e ".[diarize]"     # speaker diarization (pyannote, requires a HuggingFace token)
+pip install -e ".[embed-dedup]" # semantic deduplication (ECAPA-TDNN)
+```
 
-## How to Add a Custom Filter Block
+## usage
 
-Create a class inheriting from `AudioFilter`:
+```
+audiotrove curate INPUT_PATH OUTPUT_PATH [OPTIONS]
+
+Options:
+  --vad-threshold FLOAT   Minimum speech ratio (0-1) to keep a clip. [default: 0.3]
+  --snr-min FLOAT         Minimum SNR in dB to keep a clip. [default: 15.0]
+  --format [jsonl]        Output format. [default: jsonl]
+  --checkpoint PATH       Path to checkpoint database for resumable runs.
+```
+
+```
+audiotrove inspect INPUT_PATH [OPTIONS]
+```
+Shows duration distribution and file counts for a directory without filtering anything — useful before picking thresholds.
+
+## architecture
+
+Three locked contracts, documented in full in [ARCHITECTURE.md](ARCHITECTURE.md):
+
+- `AudioDocument` — canonical object: mono float32 audio, normalized sample rate, deterministic `doc_id`, a freeform `metadata` dict that filters append to.
+- `AudioFilter` / `AudioTransformer` — the only two block types. Filters return a bool, transformers return a modified doc. Stateless, so they're independently testable and reorderable.
+- `LocalExecutor` — walks reader → pipeline → writer, checkpoints each `doc_id` in SQLite, logs (not swallows) any exception a filter raises.
+
+Adding a custom filter:
 
 ```python
 from audiotrove.base import AudioFilter
 from audiotrove.document import AudioDocument
 
 class MyCustomFilter(AudioFilter):
-    @property
-    def name(self) -> str:
-        return "my_custom_filter"
-    
+    name = "my_custom_filter"
+
     def filter(self, doc: AudioDocument) -> bool:
-        # Examine doc.audio, doc.metadata, etc.
-        # Append metadata as needed.
-        doc.metadata['my_metric'] = some_value
-        # Return True to keep, False to discard.
-        return should_keep_this_document
+        doc.metadata['my_metric'] = compute_something(doc.audio)
+        return doc.metadata['my_metric'] > threshold
 ```
 
-Then add it to your pipeline:
+## current limitations
 
-```python
-from audiotrove.executor.local import LocalExecutor
-from audiotrove.io.readers import LocalAudioReader
-from audiotrove.io.writers import JSONLWriter
+- Sequential execution only — no multiprocessing yet. A `--workers` flag existed at one point and did nothing; it's been removed rather than left fake. Real parallel execution (with checkpoint-safe SQLite writes) is a Phase 1 item, see [ROADMAP.md](ROADMAP.md).
+- `.wav` only via the CLI glob pattern — other formats work if you use `LocalAudioReader` directly with a different glob, but the CLI doesn't expose it yet.
+- Whole-clip filtering, not segment-level. NeMo Curator's approach — fan out one file into per-segment tasks so a single bad segment doesn't sink the whole clip — is a better design and is on the roadmap, not yet implemented here.
+- `readers.py` is effectively untested right now (0% coverage). Load failures are logged, but the read path itself needs more test coverage before I'd trust it on messy real-world corpora.
 
-reader = LocalAudioReader('input/*.wav')
-writer = JSONLWriter('output/manifest.jsonl')
-pipeline = [
-    MyCustomFilter(),
-    SileroVADFilter(min_speech_ratio=0.3),
-    SNRFilter(min_snr_db=15.0),
-]
-executor = LocalExecutor(pipeline=pipeline, checkpoint_path='checkpoint.db')
-stats = executor.run(reader, writer)
-print(stats)
-```
+## what AudioTrove is not
 
-## Testing
+- Not a training framework — it prepares data, it doesn't train models.
+- Not ASR/TTS — no transcription, no generation.
+- Not a distributed query engine — JSONL + SQLite, fine up to some scale, not built for 10k+ hour corpora (consider WebDataset/HDF5 for that).
+- Not a signal-processing library — no MFCCs, no spectral analysis. High-level filtering and I/O only.
 
-Run the test suite:
+## testing
 
 ```bash
 pytest -v
-```
-
-Run tests with coverage:
-
-```bash
 pytest --cov=audiotrove --cov-report=html
 ```
 
-## Contributing
+27 tests passing as of this writing. Coverage is uneven — core filters and executor are well-covered, the CLI and reader are the weak spots (see limitations above).
 
-Contributions welcome! Please:
+## v0.1 scope
 
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/your-feature`.
-3. Add tests for new filters or transformers in `tests/`.
-4. Run `pytest` and `ruff check --fix` before submitting a PR.
-5. Keep blocks **stateless**. If you need shared state, inject it via the executor or a custom block initializer, never via global variables.
+- Real parallelism in `LocalExecutor` (checkpoint-safe under multiple workers)
+- Segment-level VAD fan-out instead of whole-clip pass/fail
+- Multi-format support exposed through the CLI, not just `.wav`
+- Test coverage on `readers.py` and `cli/main.py`
 
-## License
+PRs and issues welcome, especially against the limitations above — if VAD or SNR filtering behaves oddly on real audio you have, an issue with a sample file is the most useful thing you can send.
 
-MIT (permissive, suitable for academic and commercial use).
+## license
 
-## Acknowledgments
-
-Architecture inspired by DataTrove and the open-source audio ML ecosystem. Built for low-resource language teams, indie TTS developers, and academic labs training speech models on real-world data.
+MIT
