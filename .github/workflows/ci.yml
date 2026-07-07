@@ -16,5 +16,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
+      - run: pip install torchcodec
       - run: pytest tests/ -v --cov=audiotrove --cov-report=xml --cov-report=term-missing
       - run: ruff check audiotrove/ --show-fixes
