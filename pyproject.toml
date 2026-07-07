@@ -7,7 +7,7 @@ name = "audiotrove"
 dynamic = ["version"]
 description = "Composable audio dataset curation pipeline"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.10"
 authors = [{name = "Palak Jha"}]
 keywords = ["audio", "dataset", "machine-learning", "vad", "speech-processing", "data-curation"]
@@ -17,7 +17,6 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
     "Intended Audience :: Developers",
     "Topic :: Multimedia :: Sound/Audio :: Analysis",
 ]
