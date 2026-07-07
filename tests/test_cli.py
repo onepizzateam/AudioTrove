@@ -9,9 +9,15 @@ import pytest
 
 from click.testing import CliRunner
 
+from audiotrove import __version__
 from audiotrove.cli.main import cli
 from audiotrove.document import AudioDocument
 from audiotrove.utils.hashing import make_doc_id
+
+
+def test_version_attribute():
+    """Test __version__ attribute is set correctly."""
+    assert __version__ == "0.1.0"
 
 
 def test_curate_command_help():
@@ -37,7 +43,7 @@ def test_cli_group_version():
     runner = CliRunner()
     result = runner.invoke(cli, ['--version'])
     assert result.exit_code == 0
-    assert '0.0.1' in result.output or 'version' in result.output.lower()
+    assert __version__ in result.output
 
 
 def test_cli_group_help():

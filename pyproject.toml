@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "audiotrove"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Composable audio dataset curation pipeline"
 requires-python = ">=3.10"
 
@@ -50,3 +54,7 @@ disallow_untyped_defs = false
 [[tool.mypy.overrides]]
 module = "numpy.*"
 follow_imports = "skip"
+
+[tool.setuptools.dynamic]
+version = {attr = "audiotrove.__version__"}
+

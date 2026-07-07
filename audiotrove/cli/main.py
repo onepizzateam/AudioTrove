@@ -4,11 +4,13 @@ from rich.table import Table
 from pathlib import Path
 import logging
 
+from audiotrove import __version__
+
 console = Console()
 
 
 @click.group()
-@click.version_option()
+@click.version_option(version=__version__)
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose (DEBUG) logging.')
 def cli(verbose):
     """AudioTrove: Open-source audio data curation pipeline."""
