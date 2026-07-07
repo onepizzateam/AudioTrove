@@ -28,7 +28,9 @@ def cli():
               help='Path to checkpoint database for resumable runs.')
 @click.option('--workers', default=1, type=int, show_default=True,
               help='Number of worker processes for parallel execution.')
-def curate(input_path, output_path, vad_threshold, snr_min, output_format, checkpoint, workers):
+@click.option('--extensions', default='wav', show_default=True,
+              help='Comma-separated audio file extensions to process (e.g., "wav,mp3,flac").')
+def curate(input_path, output_path, vad_threshold, snr_min, output_format, checkpoint, workers, extensions):
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
     
     Applies VAD and SNR filters, writes JSONL manifest.
@@ -59,9 +61,17 @@ def curate(input_path, output_path, vad_threshold, snr_min, output_format, check
     if not pipeline:
         console.print("[yellow]Warning: No filters in pipeline. All audio will pass through.[/yellow]")
     
-    # Reader and writer
-    pattern = str(input_p / '*.wav') if input_p.is_dir() else str(input_p)
-    reader = LocalAudioReader(pattern)
+    # Parse extensions
+    exts = [e.strip().lower() for e in extensions.split(',')]
+    
+    # Reader: build glob patterns for each extension
+    if input_p.is_dir():
+        patterns = [str(input_p / f'*.{ext}') for ext in exts]
+    else:
+        # If input is a file, just use that single file
+        patterns = [str(input_p)]
+    
+    reader = LocalAudioReader(patterns)
     output_manifest = output_p / 'manifest.jsonl'
     writer = JSONLWriter(str(output_manifest))
     
@@ -75,6 +85,7 @@ def curate(input_path, output_path, vad_threshold, snr_min, output_format, check
     console.print(f"  Output: {output_manifest}")
     console.print(f"  Checkpoint: {checkpoint_db}")
     console.print(f"  Workers: {workers}")
+    console.print(f"  Extensions: {', '.join(exts)}")
     console.print(f"  Filters: {', '.join(b.name for b in pipeline) or 'none'}")
     console.print()
     

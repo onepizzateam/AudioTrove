@@ -2,7 +2,7 @@
 Audio readers.
 """
 import logging
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Union, List
 import numpy as np
 
 try:
@@ -22,16 +22,20 @@ logger = logging.getLogger(__name__)
 
 
 class LocalAudioReader:
-    """Reads audio files from a local directory or glob pattern via fsspec.
+    """Reads audio files from local directories or glob patterns via fsspec.
 
     Returns `AudioDocument` objects. Resamples to `target_sample_rate` and
-    downmixes to mono.
+    downmixes to mono. Supports multiple glob patterns for multi-format support.
     """
 
-    def __init__(self, path_pattern: str, target_sample_rate: int = 16000,
+    def __init__(self, path_pattern: Union[str, List[str]], target_sample_rate: int = 16000,
                  max_duration_seconds: Optional[float] = None,
                  min_duration_seconds: float = 0.5):
-        self.path_pattern = path_pattern
+        # Support both single pattern (str) and multiple patterns (list)
+        if isinstance(path_pattern, str):
+            self.path_patterns = [path_pattern]
+        else:
+            self.path_patterns = list(path_pattern)
         self.target_sr = target_sample_rate
         self.max_duration = max_duration_seconds
         self.min_duration = min_duration_seconds
@@ -40,15 +44,23 @@ class LocalAudioReader:
         if fsspec is None:
             raise RuntimeError("fsspec is required for LocalAudioReader")
 
-        fs, path = fsspec.core.url_to_fs(self.path_pattern)
-        for fpath in fs.glob(path):
-            try:
-                doc = self._load(fpath, fs)
-                yield doc
-            except Exception as e:
-                # Log and continue — don't let one bad file stop the whole load
-                logger.warning(f"Failed to load {fpath}: {e}")
-                yield None
+        seen_paths = set()  # Track paths we've already yielded to avoid duplicates
+        
+        for pattern in self.path_patterns:
+            fs, path = fsspec.core.url_to_fs(pattern)
+            for fpath in fs.glob(path):
+                # Skip if we've already processed this path
+                if fpath in seen_paths:
+                    continue
+                seen_paths.add(fpath)
+                
+                try:
+                    doc = self._load(fpath, fs)
+                    yield doc
+                except Exception as e:
+                    # Log and continue — don't let one bad file stop the whole load
+                    logger.warning(f"Failed to load {fpath}: {e}")
+                    yield None
 
     def _load(self, path: str, fs) -> Optional[AudioDocument]:
         if torchaudio is None:
