@@ -1,9 +1,12 @@
 """
 Local executor.
 """
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -59,7 +62,7 @@ class LocalExecutor:
         Returns a small stats dict.
         """
         self._init_db()
-        stats = {"processed": 0, "kept": 0, "skipped": 0}
+        stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
         for doc in reader:
             if doc is None:
@@ -77,12 +80,28 @@ class LocalExecutor:
                 if hasattr(block, "filter"):
                     try:
                         keep = block.filter(doc)
-                    except Exception:
+                    except Exception as e:
+                        block_name = getattr(block, 'name', block.__class__.__name__)
+                        logger.exception(f"Filter {block_name} raised exception on {doc.source_path}: {e}")
+                        stats["errors"] += 1
+                        if block_name not in stats["errors_by_filter"]:
+                            stats["errors_by_filter"][block_name] = 0
+                        stats["errors_by_filter"][block_name] += 1
                         keep = False
                     if not keep:
                         break
                 elif hasattr(block, "transform"):
-                    doc = block.transform(doc)
+                    try:
+                        doc = block.transform(doc)
+                    except Exception as e:
+                        block_name = getattr(block, 'name', block.__class__.__name__)
+                        logger.exception(f"Transformer {block_name} raised exception on {doc.source_path}: {e}")
+                        stats["errors"] += 1
+                        if block_name not in stats["errors_by_filter"]:
+                            stats["errors_by_filter"][block_name] = 0
+                        stats["errors_by_filter"][block_name] += 1
+                        keep = False
+                        break
 
             stats["processed"] += 1
             if keep:

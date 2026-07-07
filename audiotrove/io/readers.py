@@ -1,6 +1,7 @@
 """
 Audio readers.
 """
+import logging
 from typing import Iterator, Optional
 import numpy as np
 
@@ -16,6 +17,8 @@ except Exception:  # pragma: no cover
 
 from audiotrove.document import AudioDocument
 from audiotrove.utils.hashing import make_doc_id
+
+logger = logging.getLogger(__name__)
 
 
 class LocalAudioReader:
@@ -42,8 +45,9 @@ class LocalAudioReader:
             try:
                 doc = self._load(fpath, fs)
                 yield doc
-            except Exception:
-                # Log and continue
+            except Exception as e:
+                # Log and continue — don't let one bad file stop the whole load
+                logger.warning(f"Failed to load {fpath}: {e}")
                 yield None
 
     def _load(self, path: str, fs) -> Optional[AudioDocument]:
