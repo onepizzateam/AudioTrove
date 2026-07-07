@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 .env
 
+build_output.txt
+tasks.txt
+
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
