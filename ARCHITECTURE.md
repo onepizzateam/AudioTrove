@@ -13,12 +13,22 @@ This document records the locked, foundational decisions for Phase 0 of AudioTro
 
 Rationale: explicit filter vs. transformer removes ambiguity of `None` return values and makes unit tests simpler and safer under multiprocessing.
 
+- Block model (Phase 0.5, added for segmentation): one additional block type for fan-out operations:
+	- `AudioFanOutTransformer`: `transform(doc: AudioDocument) -> list[AudioDocument]` — returns zero, one, or many documents. Enables segmentation and expansion operations where one input doc produces multiple outputs.
+
+**Why fan-out transformers (not in original Phase 0):** The original block model (1:1 transform/filter) works for simple pipeline chains but doesn't support "right-splitting" operations like segmentation, where a long file should become multiple shorter segments for independent processing. Compared to alternatives:
+  - Option A (keep 1:1, segment externally): requires special reader-side handling, breaks modularity of the pipeline.
+  - Option B (extend executor to detect fan-out): requires hard-coding list expansion logic in the executor instead of keeping it in the block itself.
+  - Option C (add AudioFanOutTransformer): keeps the block interface extensible and executor logic general. Blocks declare their cardinality (1:1 vs. 1:many) in their type.
+
+Segments from a fan-out transformer must have deterministic `doc_id` derived from parent doc_id + segment metadata (start/end times) so re-running is idempotent and checkpoint-safe. The executor still processes each segment independently through remaining pipeline blocks.
+
 ## Executor model
 
-- `LocalExecutor` (Phase 0): sequential worker loop (future: multiprocessing). Responsibility: iterate reader → apply pipeline blocks → write output → checkpoint processed `doc_id`.
+- `LocalExecutor` (Phase 0): sequential worker loop, parallelizable via `ProcessPoolExecutor` (num_workers param). Responsibility: iterate reader → apply pipeline blocks (handling 1:1 and 1:many cardinality) → write output → checkpoint processed `doc_id`.
 - Checkpointing: SQLite database (`checkpoint_path`) with a `processed(doc_id)` table and WAL-mode recommendation. Checkpointing is a Phase 0 requirement to allow resumable long runs.
 
-Rationale: keep parallelism and checkpointing out of block code; executor manages it so blocks remain stateless and reorderable.
+Rationale: keep parallelism and checkpointing out of block code; executor manages it so blocks remain stateless and reorderable. Fan-out transformers emit results to the executor, which handles downstream pipeline steps on all expanded docs.
 
 ## I/O and dependencies
 

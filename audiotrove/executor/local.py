@@ -14,47 +14,82 @@ def _worker_process_doc(doc, pipeline):
     """Worker function that processes a single document through the pipeline.
     
     This runs in a separate process. It applies all filter/transformer blocks
-    and returns (doc, keep, error) tuple back to the main process.
+    and returns results back to the main process.
+    
+    Supports AudioFanOutTransformer blocks which can emit multiple docs.
     
     Args:
         doc: AudioDocument to process
-        pipeline: list of AudioFilter/AudioTransformer blocks
+        pipeline: list of AudioFilter/AudioTransformer/AudioFanOutTransformer blocks
     
     Returns:
-        Tuple of (doc, keep: bool, error: str or None)
+        Tuple of (docs: list, keep: bool, error: str or None, error_block: str or None)
     """
+    from audiotrove.base import AudioFanOutTransformer
+    
+    docs = [doc]
     keep = True
     error = None
     error_block = None
     
     try:
         for block in pipeline:
+            new_docs = []
+            
             # Filters return bool
-            if hasattr(block, "filter"):
-                try:
-                    keep = block.filter(doc)
-                except Exception as e:
-                    block_name = getattr(block, 'name', block.__class__.__name__)
-                    error = f"{block_name}: {e}"
-                    error_block = block_name
-                    keep = False
-                    break
+            if hasattr(block, "filter") and not isinstance(block, AudioFanOutTransformer):
+                for d in docs:
+                    try:
+                        keep = block.filter(d)
+                        if keep:
+                            new_docs.append(d)
+                    except Exception as e:
+                        block_name = getattr(block, 'name', block.__class__.__name__)
+                        error = f"{block_name}: {e}"
+                        error_block = block_name
+                        keep = False
+                        break
                 if not keep:
                     break
-            elif hasattr(block, "transform"):
-                try:
-                    doc = block.transform(doc)
-                except Exception as e:
-                    block_name = getattr(block, 'name', block.__class__.__name__)
-                    error = f"{block_name}: {e}"
-                    error_block = block_name
-                    keep = False
+                docs = new_docs
+            
+            # Fan-out transformers can emit multiple docs
+            elif isinstance(block, AudioFanOutTransformer):
+                for d in docs:
+                    try:
+                        expanded = block.transform(d)
+                        new_docs.extend(expanded if isinstance(expanded, list) else [expanded])
+                    except Exception as e:
+                        block_name = getattr(block, 'name', block.__class__.__name__)
+                        error = f"{block_name}: {e}"
+                        error_block = block_name
+                        keep = False
+                        break
+                if error:
                     break
+                docs = new_docs
+            
+            # Regular transformers return one doc
+            elif hasattr(block, "transform"):
+                new_docs = []
+                for d in docs:
+                    try:
+                        d = block.transform(d)
+                        new_docs.append(d)
+                    except Exception as e:
+                        block_name = getattr(block, 'name', block.__class__.__name__)
+                        error = f"{block_name}: {e}"
+                        error_block = block_name
+                        keep = False
+                        break
+                if not keep:
+                    break
+                docs = new_docs
     except Exception as e:
         error = str(e)
         keep = False
     
-    return (doc, keep, error, error_block)
+    return (docs, keep, error, error_block)
 
 
 class LocalExecutor:
@@ -130,7 +165,9 @@ class LocalExecutor:
                 self._conn = None
     
     def _run_sequential(self, reader, writer) -> dict:
-        """Sequential processing (num_workers=1). Preserves original behavior exactly."""
+        """Sequential processing (num_workers=1). Preserves original behavior exactly for non-fanout cases."""
+        from audiotrove.base import AudioFanOutTransformer
+        
         self._init_db()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
@@ -143,44 +180,83 @@ class LocalExecutor:
                 stats["skipped"] += 1
                 continue
 
+            # Process doc(s) through the pipeline
+            docs = [doc]
             keep = True
+            error = None
+            
             # Apply filters/transformers in pipeline order
             for block in self.pipeline:
+                new_docs = []
+                
                 # Filters return bool
-                if hasattr(block, "filter"):
-                    try:
-                        keep = block.filter(doc)
-                    except Exception as e:
-                        block_name = getattr(block, 'name', block.__class__.__name__)
-                        logger.exception(f"Filter {block_name} raised exception on {doc.source_path}: {e}")
-                        stats["errors"] += 1
-                        if block_name not in stats["errors_by_filter"]:
-                            stats["errors_by_filter"][block_name] = 0
-                        stats["errors_by_filter"][block_name] += 1
-                        keep = False
+                if hasattr(block, "filter") and not isinstance(block, AudioFanOutTransformer):
+                    for d in docs:
+                        try:
+                            keep = block.filter(d)
+                            if keep:
+                                new_docs.append(d)
+                        except Exception as e:
+                            block_name = getattr(block, 'name', block.__class__.__name__)
+                            logger.exception(f"Filter {block_name} raised exception on {d.source_path}: {e}")
+                            stats["errors"] += 1
+                            if block_name not in stats["errors_by_filter"]:
+                                stats["errors_by_filter"][block_name] = 0
+                            stats["errors_by_filter"][block_name] += 1
+                            keep = False
+                            break
                     if not keep:
                         break
-                elif hasattr(block, "transform"):
-                    try:
-                        doc = block.transform(doc)
-                    except Exception as e:
-                        block_name = getattr(block, 'name', block.__class__.__name__)
-                        logger.exception(f"Transformer {block_name} raised exception on {doc.source_path}: {e}")
-                        stats["errors"] += 1
-                        if block_name not in stats["errors_by_filter"]:
-                            stats["errors_by_filter"][block_name] = 0
-                        stats["errors_by_filter"][block_name] += 1
-                        keep = False
+                    docs = new_docs
+                
+                # Fan-out transformers can emit multiple docs
+                elif isinstance(block, AudioFanOutTransformer):
+                    for d in docs:
+                        try:
+                            expanded = block.transform(d)
+                            new_docs.extend(expanded if isinstance(expanded, list) else [expanded])
+                        except Exception as e:
+                            block_name = getattr(block, 'name', block.__class__.__name__)
+                            logger.exception(f"Fan-out Transformer {block_name} raised exception on {d.source_path}: {e}")
+                            stats["errors"] += 1
+                            if block_name not in stats["errors_by_filter"]:
+                                stats["errors_by_filter"][block_name] = 0
+                            stats["errors_by_filter"][block_name] += 1
+                            error = True
+                            break
+                    if error:
                         break
+                    docs = new_docs
+                
+                # Regular transformers return one doc
+                elif hasattr(block, "transform"):
+                    for d in docs:
+                        try:
+                            d = block.transform(d)
+                            new_docs.append(d)
+                        except Exception as e:
+                            block_name = getattr(block, 'name', block.__class__.__name__)
+                            logger.exception(f"Transformer {block_name} raised exception on {d.source_path}: {e}")
+                            stats["errors"] += 1
+                            if block_name not in stats["errors_by_filter"]:
+                                stats["errors_by_filter"][block_name] = 0
+                            stats["errors_by_filter"][block_name] += 1
+                            keep = False
+                            break
+                    if not keep:
+                        break
+                    docs = new_docs
 
             stats["processed"] += 1
-            if keep:
-                writer.write(doc)
-                stats["kept"] += 1
+            if keep and docs and not error:
+                for d in docs:
+                    writer.write(d)
+                    self._mark_processed(d.doc_id)
+                stats["kept"] += len(docs)
             else:
-                stats["skipped"] += 1
-
-            self._mark_processed(doc.doc_id)
+                stats["skipped"] += len(docs)
+                # Mark original doc as processed even if expanded/filtered to nothing
+                self._mark_processed(doc.doc_id)
 
         return stats
     
@@ -220,26 +296,29 @@ class LocalExecutor:
             # Process results as they complete (main process handles writes)
             for future in as_completed(future_to_doc):
                 try:
-                    doc, keep, error, error_block = future.result()
+                    docs, keep, error, error_block = future.result()
                     
                     stats["processed"] += 1
                     
                     if error:
-                        logger.exception(f"Error processing {doc.source_path}: {error}")
+                        for doc in docs:
+                            logger.exception(f"Error processing {doc.source_path}: {error}")
                         stats["errors"] += 1
                         if error_block and error_block not in stats["errors_by_filter"]:
                             stats["errors_by_filter"][error_block] = 0
                         if error_block:
                             stats["errors_by_filter"][error_block] += 1
                     
-                    if keep:
-                        writer.write(doc)
-                        stats["kept"] += 1
+                    if keep and docs and not error:
+                        for doc in docs:
+                            writer.write(doc)
+                            self._mark_processed(doc.doc_id)
+                        stats["kept"] += len(docs)
                     else:
-                        stats["skipped"] += 1
-                    
-                    # Main process always marks as processed
-                    self._mark_processed(doc.doc_id)
+                        stats["skipped"] += len(docs)
+                        # Mark original doc as processed
+                        for doc in docs:
+                            self._mark_processed(doc.doc_id)
                     
                 except Exception as e:
                     logger.exception(f"Worker task failed: {e}")
