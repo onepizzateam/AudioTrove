@@ -25,6 +25,25 @@ class SileroVADFilter(AudioFilter):
         self.threshold = threshold
         self.window_size = window_size_samples
         self._model = None
+        self._utils = None
+
+    def __getstate__(self):
+        """Exclude the lazy-loaded torch model from pickling.
+        
+        When this filter is pickled for multiprocessing (ProcessPoolExecutor),
+        we exclude the torch model so it doesn't get serialized. The model will
+        be lazily reloaded in the worker process when needed.
+        """
+        state = self.__dict__.copy()
+        # Remove unpicklable torch model and utils
+        state['_model'] = None
+        state['_utils'] = None
+        return state
+
+    def __setstate__(self, state):
+        """Restore state after unpickling."""
+        self.__dict__.update(state)
+        # _model and _utils will be lazily loaded on first access
 
     @property
     def model(self):

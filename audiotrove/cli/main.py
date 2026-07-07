@@ -26,7 +26,9 @@ def cli():
               help='Output format.')
 @click.option('--checkpoint', default=None,
               help='Path to checkpoint database for resumable runs.')
-def curate(input_path, output_path, vad_threshold, snr_min, output_format, checkpoint):
+@click.option('--workers', default=1, type=int, show_default=True,
+              help='Number of worker processes for parallel execution.')
+def curate(input_path, output_path, vad_threshold, snr_min, output_format, checkpoint, workers):
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
     
     Applies VAD and SNR filters, writes JSONL manifest.
@@ -65,13 +67,14 @@ def curate(input_path, output_path, vad_threshold, snr_min, output_format, check
     
     # Executor
     checkpoint_db = checkpoint or str(output_p / 'checkpoint.db')
-    executor = LocalExecutor(pipeline=pipeline, checkpoint_path=checkpoint_db)
+    executor = LocalExecutor(pipeline=pipeline, checkpoint_path=checkpoint_db, num_workers=workers)
     
     # Run
     console.print("[cyan]Starting curation pipeline[/cyan]")
     console.print(f"  Input:  {input_path}")
     console.print(f"  Output: {output_manifest}")
     console.print(f"  Checkpoint: {checkpoint_db}")
+    console.print(f"  Workers: {workers}")
     console.print(f"  Filters: {', '.join(b.name for b in pipeline) or 'none'}")
     console.print()
     

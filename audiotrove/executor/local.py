@@ -1,26 +1,78 @@
 """
-Local executor.
+Local executor with optional multi-worker parallelism.
 """
 import logging
 import sqlite3
 from pathlib import Path
 from typing import Optional
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
 
+def _worker_process_doc(doc, pipeline):
+    """Worker function that processes a single document through the pipeline.
+    
+    This runs in a separate process. It applies all filter/transformer blocks
+    and returns (doc, keep, error) tuple back to the main process.
+    
+    Args:
+        doc: AudioDocument to process
+        pipeline: list of AudioFilter/AudioTransformer blocks
+    
+    Returns:
+        Tuple of (doc, keep: bool, error: str or None)
+    """
+    keep = True
+    error = None
+    error_block = None
+    
+    try:
+        for block in pipeline:
+            # Filters return bool
+            if hasattr(block, "filter"):
+                try:
+                    keep = block.filter(doc)
+                except Exception as e:
+                    block_name = getattr(block, 'name', block.__class__.__name__)
+                    error = f"{block_name}: {e}"
+                    error_block = block_name
+                    keep = False
+                    break
+                if not keep:
+                    break
+            elif hasattr(block, "transform"):
+                try:
+                    doc = block.transform(doc)
+                except Exception as e:
+                    block_name = getattr(block, 'name', block.__class__.__name__)
+                    error = f"{block_name}: {e}"
+                    error_block = block_name
+                    keep = False
+                    break
+    except Exception as e:
+        error = str(e)
+        keep = False
+    
+    return (doc, keep, error, error_block)
+
 
 class LocalExecutor:
-    """Sequential local executor with simple SQLite checkpointing.
+    """Local executor with optional multi-worker parallelism.
 
-    This intentionally runs sequentially for Phase 0. Parallelism is deferred
-    to Phase 1. It records processed `doc_id` values in a SQLite DB so runs
-    can be resumed.
+    When num_workers=1 (default), runs sequentially (backward compatible).
+    When num_workers>1, uses ProcessPoolExecutor for parallel document processing.
+    
+    The main process always owns the SQLite connection and performs all writes
+    to avoid concurrent write issues. Workers only process documents through
+    the pipeline and return results.
     """
 
-    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None):
+    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None, 
+                 num_workers: int = 1):
         self.pipeline = pipeline
         self.checkpoint_path = checkpoint_path
+        self.num_workers = num_workers
         self._conn = None
 
     def _init_db(self):
@@ -59,8 +111,26 @@ class LocalExecutor:
     def run(self, reader, writer) -> dict:
         """Run the pipeline over documents produced by `reader`.
 
-        Returns a small stats dict.
+        When num_workers=1, runs sequentially (backward compatible).
+        When num_workers>1, uses ProcessPoolExecutor for parallel processing.
+        
+        The main process always owns SQLite writes to avoid concurrent access issues.
+
+        Returns a stats dict with keys: processed, kept, skipped, errors, errors_by_filter.
         """
+        try:
+            if self.num_workers == 1:
+                return self._run_sequential(reader, writer)
+            else:
+                return self._run_parallel(reader, writer)
+        finally:
+            # Always close the database connection when done
+            if self._conn:
+                self._conn.close()
+                self._conn = None
+    
+    def _run_sequential(self, reader, writer) -> dict:
+        """Sequential processing (num_workers=1). Preserves original behavior exactly."""
         self._init_db()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
@@ -112,4 +182,67 @@ class LocalExecutor:
 
             self._mark_processed(doc.doc_id)
 
+        return stats
+    
+    def _run_parallel(self, reader, writer) -> dict:
+        """Parallel processing using ProcessPoolExecutor.
+        
+        Main process owns SQLite connection. Workers process documents through
+        the pipeline and return results. Main process writes and checkpoints.
+        """
+        self._init_db()
+        stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
+        
+        # Collect all unprocessed documents first
+        pending_docs = []
+        for doc in reader:
+            if doc is None:
+                stats["skipped"] += 1
+                continue
+            
+            if self._is_processed(doc.doc_id):
+                stats["skipped"] += 1
+                continue
+            
+            pending_docs.append(doc)
+        
+        if not pending_docs:
+            return stats
+        
+        # Process documents in parallel
+        with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+            # Submit all tasks
+            future_to_doc = {
+                executor.submit(_worker_process_doc, doc, self.pipeline): doc
+                for doc in pending_docs
+            }
+            
+            # Process results as they complete (main process handles writes)
+            for future in as_completed(future_to_doc):
+                try:
+                    doc, keep, error, error_block = future.result()
+                    
+                    stats["processed"] += 1
+                    
+                    if error:
+                        logger.exception(f"Error processing {doc.source_path}: {error}")
+                        stats["errors"] += 1
+                        if error_block and error_block not in stats["errors_by_filter"]:
+                            stats["errors_by_filter"][error_block] = 0
+                        if error_block:
+                            stats["errors_by_filter"][error_block] += 1
+                    
+                    if keep:
+                        writer.write(doc)
+                        stats["kept"] += 1
+                    else:
+                        stats["skipped"] += 1
+                    
+                    # Main process always marks as processed
+                    self._mark_processed(doc.doc_id)
+                    
+                except Exception as e:
+                    logger.exception(f"Worker task failed: {e}")
+                    stats["errors"] += 1
+        
         return stats
