@@ -1,5 +1,8 @@
 # AudioTrove 🎙️→📦
 
+[![CI Status](https://github.com/onepizzateam/AudioTrove/actions/workflows/ci.yml/badge.svg)](https://github.com/onepizzateam/AudioTrove/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Composable audio dataset curation. VAD, SNR filtering, and resumable checkpointing as a pip-installable pipeline instead of a full ML-curation stack.
 
 ```bash
@@ -21,7 +24,7 @@ Curation Results
 ✓ Manifest written to output/manifest.jsonl
 ```
 
-## what it actually does
+## what it does
 
 You point it at a directory of audio. AudioTrove runs each file through:
 
