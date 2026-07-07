@@ -25,6 +25,7 @@ dev = [
     "ruff",
     "mypy",
     "click[testing]",
+    "scipy>=1.10.0",
 ]
 
 [project.scripts]

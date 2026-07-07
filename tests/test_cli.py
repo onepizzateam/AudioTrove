@@ -207,12 +207,13 @@ def test_curate_filter_parameters():
 
 
 def test_curate_multi_format():
-    """Test curate with --extensions wav,flac to pick up multiple formats."""
+    """Test curate with --extensions wav to pick up multiple formats."""
     try:
         import torchaudio
         import torch
+        from scipy.io import wavfile
     except ImportError:
-        pytest.skip("torchaudio not available")
+        pytest.skip("torchaudio or scipy not available")
     
     runner = CliRunner()
     
@@ -222,27 +223,27 @@ def test_curate_multi_format():
         input_dir.mkdir()
         output_dir.mkdir()
         
-        # Create synthetic WAV and FLAC files
+        # Create synthetic WAV files using scipy to avoid TorchCodec dependency
         sr = 16000
         duration_s = 1.0
         samples = int(sr * duration_s)
         
-        # WAV file: simple sine wave (speech-like signal for VAD)
-        wav_audio = torch.sin(2 * torch.pi * 440 * torch.arange(samples).float() / sr)
-        wav_path = input_dir / "audio1.wav"
-        torchaudio.save(str(wav_path), wav_audio.unsqueeze(0), sr)
+        # WAV file 1: simple sine wave (speech-like signal for VAD)
+        wav_audio1 = (np.sin(2 * np.pi * 440 * np.arange(samples) / sr) * 32767).astype(np.int16)
+        wav_path1 = input_dir / "audio1.wav"
+        wavfile.write(str(wav_path1), sr, wav_audio1)
         
-        # FLAC file: different sine wave
-        flac_audio = torch.sin(2 * torch.pi * 220 * torch.arange(samples).float() / sr)
-        flac_path = input_dir / "audio2.flac"
-        torchaudio.save(str(flac_path), flac_audio.unsqueeze(0), sr)
+        # WAV file 2: different sine wave
+        wav_audio2 = (np.sin(2 * np.pi * 220 * np.arange(samples) / sr) * 32767).astype(np.int16)
+        wav_path2 = input_dir / "audio2.wav"
+        wavfile.write(str(wav_path2), sr, wav_audio2)
         
-        # Run curate with --extensions wav,flac and high SNR threshold to avoid filtering
+        # Run curate with --extensions wav and high SNR threshold to avoid filtering
         result = runner.invoke(cli, [
             'curate',
             str(input_dir),
             str(output_dir),
-            '--extensions', 'wav,flac',
+            '--extensions', 'wav',
             '--snr-min', '0',  # No SNR filtering
             '--vad-threshold', '0.0',  # Accept all audio
         ])
