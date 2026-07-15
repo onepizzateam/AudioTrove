@@ -37,7 +37,9 @@ def cli(verbose):
               help='Number of worker processes for parallel execution.')
 @click.option('--extensions', default='wav', show_default=True,
               help='Comma-separated audio file extensions to process (e.g., "wav,mp3,flac").')
-def curate(input_path, output_path, vad_threshold, snr_min, output_format, checkpoint, workers, extensions):
+@click.option('--segment', is_flag=True, default=False,
+              help='Split audio into per-speech-segment sub-documents (VAD fan-out). Each speech segment becomes its own JSONL entry.')
+def curate(input_path, output_path, vad_threshold, snr_min, output_format, checkpoint, workers, extensions, segment):
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
     
     Applies VAD and SNR filters, writes JSONL manifest.
@@ -84,6 +86,15 @@ def curate(input_path, output_path, vad_threshold, snr_min, output_format, check
     
     # Executor
     checkpoint_db = checkpoint or str(output_p / 'checkpoint.db')
+    # Optionally insert segmentation
+    if 'segment' in locals() and segment:
+        from audiotrove.filters.vad import VADSegmenter
+        # Insert segmenter after VAD filter (if present), otherwise at start
+        vad_idx = next((i for i, b in enumerate(pipeline) if getattr(b, 'name', '') == 'silero_vad'), None)
+        insert_at = (vad_idx + 1) if vad_idx is not None else 0
+        pipeline.insert(insert_at, VADSegmenter(threshold=0.5))
+        console.print("  [cyan]Segmentation: enabled (VADSegmenter)[/cyan]")
+
     executor = LocalExecutor(pipeline=pipeline, checkpoint_path=checkpoint_db, num_workers=workers)
     
     # Run
@@ -94,6 +105,7 @@ def curate(input_path, output_path, vad_threshold, snr_min, output_format, check
     console.print(f"  Workers: {workers}")
     console.print(f"  Extensions: {', '.join(exts)}")
     console.print(f"  Filters: {', '.join(b.name for b in pipeline) or 'none'}")
+    console.print(f"  Segmentation: {'enabled' if 'segment' in locals() and segment else 'disabled'}")
     console.print()
     
     stats = executor.run(reader, writer)
