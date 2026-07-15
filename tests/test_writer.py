@@ -32,15 +32,17 @@ def test_jsonl_writer_valid_json_output(tmp_path):
     doc = AudioDocument(audio=audio, sample_rate=sr, source_path="test.mp3", duration_seconds=1.0, doc_id=make_doc_id("test.mp3"), metadata={"key": "value"})
     writer.write(doc)
 
+    from audiotrove import __version__
     with open(output_path) as f:
         content = json.loads(f.read())
-        assert content == {
-            "doc_id": make_doc_id("test.mp3"),
-            "source_path": "test.mp3",
-            "sample_rate": sr,
-            "duration_seconds": 1.0,
-            "metadata": {"key": "value"}
-        }
+        assert content["doc_id"] == make_doc_id("test.mp3")
+        assert content["source_path"] == "test.mp3"
+        assert content["sample_rate"] == sr
+        assert content["duration_seconds"] == 1.0
+        assert content["metadata"] == {"key": "value"}
+        assert "pipeline_version" in content
+        assert "processed_at" in content
+        assert content["pipeline_version"] == __version__
 
 
 def test_jsonl_writer_multiple_writes(tmp_path):
