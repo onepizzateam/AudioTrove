@@ -112,49 +112,61 @@ def curate(input_path, output_path, vad_threshold, snr_min, output_format, check
 
 @cli.command()
 @click.argument('input_path')
-@click.option('--limit', default=10, type=int, show_default=True,
-              help='Show stats for first N files.')
-def inspect(input_path, limit):
-    """Show statistics for an audio directory without filtering.
-    
-    Displays duration distribution, format counts, and basic metadata.
-    """
+@click.option('--extensions', default='wav', show_default=True,
+              help='Comma-separated audio extensions to inspect (e.g. "wav,mp3,flac").')
+@click.option('--limit', default=None, type=int, show_default=True,
+              help='Show stats for first N files. Cap the number of files inspected (default: all).')
+def inspect(input_path, extensions, limit):
+    """Show statistics for an audio directory without filtering."""
     from audiotrove.io.readers import LocalAudioReader
-    from pathlib import Path
     import numpy as np
-    
+
     input_p = Path(input_path)
     if not input_p.exists():
         console.print(f"[red]Error: Input path does not exist: {input_path}[/red]")
         raise SystemExit(1)
-    
-    pattern = str(input_p / '*.wav') if input_p.is_dir() else str(input_p)
-    reader = LocalAudioReader(pattern, min_duration_seconds=0.0, max_duration_seconds=None)
-    
+
+    exts = [e.strip().lower() for e in extensions.split(',')]
+
+    if input_p.is_dir():
+        patterns = [str(input_p / f'**/*.{ext}') for ext in exts]
+    else:
+        patterns = [str(input_p)]
+
+    reader = LocalAudioReader(patterns, min_duration_seconds=0.0, max_duration_seconds=None)
+
     durations = []
+    format_counts = {}
     count = 0
+
     for doc in reader:
         if doc is None:
             continue
         durations.append(doc.duration_seconds)
+        ext = Path(doc.source_path).suffix.lstrip('.').lower()
+        format_counts[ext] = format_counts.get(ext, 0) + 1
         count += 1
-        if count >= limit:  # Respect limit parameter
+        if limit and count >= limit:
             break
-    
+
     if not durations:
         console.print("[yellow]No audio files found.[/yellow]")
         return
-    
+
     durations = np.array(durations)
-    
-    table = Table(title=f"Audio Directory Stats (sampled {len(durations)} files)")
+    total_hours = durations.sum() / 3600
+
+    table = Table(title=f"Audio Directory Stats ({len(durations)} files)")
     table.add_column("Statistic", style="cyan")
     table.add_column("Value", style="magenta")
-    table.add_row("Count", str(len(durations)))
-    table.add_row("Duration (mean)", f"{durations.mean():.2f}s")
-    table.add_row("Duration (min)", f"{durations.min():.2f}s")
-    table.add_row("Duration (max)", f"{durations.max():.2f}s")
-    table.add_row("Duration (median)", f"{np.median(durations):.2f}s")
+    table.add_row("Files", str(len(durations)))
+    table.add_row("Total duration", f"{total_hours:.2f}h ({durations.sum():.0f}s)")
+    table.add_row("Mean duration", f"{durations.mean():.2f}s")
+    table.add_row("Median duration", f"{np.median(durations):.2f}s")
+    table.add_row("Min duration", f"{durations.min():.2f}s")
+    table.add_row("Max duration", f"{durations.max():.2f}s")
+    for fmt, cnt in sorted(format_counts.items()):
+        table.add_row(f"Format: .{fmt}", str(cnt))
     console.print(table)
 
 
