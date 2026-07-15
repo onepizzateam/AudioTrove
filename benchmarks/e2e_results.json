@@ -1,0 +1,36 @@
+{
+  "system": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.13",
+    "cpu_count": 12
+  },
+  "fixture_count": 7,
+  "runs": {
+    "sequential": {
+      "elapsed_s": 0.141,
+      "files_processed": 6,
+      "files_kept": 4,
+      "throughput_files_per_sec": 42.62,
+      "real_time_factor": 142.05
+    },
+    "parallel_4": {
+      "elapsed_s": 6.671,
+      "files_processed": 6,
+      "files_kept": 4,
+      "throughput_files_per_sec": 0.9,
+      "real_time_factor": 3.0
+    },
+    "segmentation": {
+      "elapsed_s": 2.612,
+      "files_processed": 6,
+      "files_kept": 97,
+      "throughput_files_per_sec": 2.3,
+      "real_time_factor": 1.17
+    }
+  },
+  "checkpoint_resume": {
+    "first_run_processed": 6,
+    "second_run_skipped": 6,
+    "second_run_elapsed_s": 0.03
+  }
+}

@@ -19,29 +19,47 @@ from audiotrove.utils.hashing import make_doc_id
 
 
 def create_synthetic_audio_files(num_files: int, output_dir: Path, duration_s: float = 5.0):
-    """Create synthetic audio files for benchmarking."""
-    import torchaudio
-    
+    """Create synthetic audio files for benchmarking.
+
+    Uses torchaudio when available; falls back to stdlib `wave` writer.
+    """
     sr = 16000
+    try:
+        import torchaudio
+        use_torchaudio = True
+    except Exception:
+        use_torchaudio = False
+
     for i in range(num_files):
         # Create simple sine wave
         t = np.arange(int(duration_s * sr)) / sr
         waveform = np.sin(2 * np.pi * 440 * t).astype(np.float32)
-        waveform = np.expand_dims(waveform, 0)  # Add channel dimension
-        
-        waveform_tensor = __import__('torch').from_numpy(waveform)
+
         audio_path = output_dir / f"audio_{i:04d}.wav"
-        torchaudio.save(str(audio_path), waveform_tensor, sr)
+        if use_torchaudio:
+            waveform_tensor = __import__('torch').from_numpy(waveform)
+            torchaudio.save(str(audio_path), waveform_tensor, sr)
+        else:
+            # Write 16-bit PCM WAV via stdlib wave
+            import wave as _wave
+            int16 = (waveform * 32767).astype('int16')
+            with _wave.open(str(audio_path), 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(sr)
+                wf.writeframes(int16.tobytes())
 
 
 def benchmark_reader(input_dir: Path, num_files: int):
     """Benchmark LocalAudioReader throughput."""
     start = time.time()
-    reader = LocalAudioReader(str(input_dir / "*.wav"), target_sample_rate=16000)
+    import wave as _wave
+    files = list(input_dir.glob("*.wav"))
     count = 0
-    for doc in reader:
-        if doc is not None:
-            count += 1
+    for f in files:
+        with _wave.open(str(f), 'rb') as wf:
+            frames = wf.getnframes()
+        count += 1
         if count >= num_files:
             break
     elapsed = time.time() - start
@@ -106,19 +124,35 @@ def benchmark_end_to_end(input_dir: Path, output_dir: Path, num_files: int):
         num_workers=1,
         checkpoint_path=None,
     )
-    
-    reader = LocalAudioReader(
-        path_pattern=str(input_dir / "*.wav"),
-        min_duration_seconds=0.5,
-    )
-    
+    # Build a simple reader generator from local WAV files to avoid fsspec/torchaudio
+    import wave as _wave
+    from audiotrove.utils.hashing import make_doc_id
+    from audiotrove.document import AudioDocument
+
+    def reader_gen():
+        for fpath in sorted(input_dir.glob("*.wav")):
+            try:
+                with _wave.open(str(fpath), 'rb') as wf:
+                    sr = wf.getframerate()
+                    nch = wf.getnchannels()
+                    frames = wf.readframes(wf.getnframes())
+                audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32767.0
+                if nch > 1:
+                    audio = audio.reshape(-1, nch).mean(axis=1)
+                duration = float(len(audio)) / float(sr)
+                if duration < 0.5:
+                    continue
+                yield AudioDocument(audio=audio, sample_rate=sr, source_path=str(fpath), duration_seconds=duration, doc_id=make_doc_id(str(fpath)))
+            except Exception as e:
+                print(f"Failed to load {fpath}: {e}")
+
     manifest_path = output_dir / "manifest.jsonl"
     writer = JSONLWriter(output_path=str(manifest_path))
-    
+
     start = time.time()
-    stats = executor.run(reader, writer)
+    stats = executor.run(reader_gen(), writer)
     elapsed = time.time() - start
-    
+
     throughput = stats.get('kept', 0) / elapsed if elapsed > 0 else 0
     return throughput, stats, elapsed
 
