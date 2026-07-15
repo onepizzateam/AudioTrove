@@ -130,7 +130,21 @@ pytest -v
 pytest --cov=audiotrove --cov-report=html
 ```
 
-62 tests passing as of this writing, ~73% overall statement coverage. Core document/filter/writer logic and the CLI are well-covered; `executor/local.py`'s parallel code paths and some `vad.py` edge branches are the areas with the most room to grow.
+## performance
+
+Benchmarked on LibriSpeech dev-clean WAV fixtures, Python 3.13.13, Windows-11-10.0.26200-SP0.
+
+| Mode | Files | Wall time | Throughput | Real-time factor |
+|------|-------|-----------|------------|-----------------|
+| Sequential (--workers 1) | 2703 | 144.68s | 18.68 files/sec | 87.17x |
+| Parallel (--workers 4) | 2703 | 93.81s | 28.81 files/sec | 134.44x |
+| With segmentation (--segment) | 2703 | 633.88s | 4.26 files/sec | 2.62x |
+
+**Checkpoint resume:** second run over 2703 already-processed files completes in ~9.94s — skips all previously completed docs.
+
+Run `python scripts/benchmark_e2e.py --corpus-dir /path/to/LibriSpeech_wav --ext wav` to reproduce on your hardware.
+
+81 tests passing as of this writing. Coverage on this run: ~88% for `audiotrove` (see `coverage.xml` / `coverage report`). Core filters, VAD, and executor paths are well-covered; some I/O and parallel edge branches could use more tests.
 
 ## roadmap
 
