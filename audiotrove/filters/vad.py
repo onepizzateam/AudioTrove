@@ -17,6 +17,33 @@ from audiotrove.document import AudioDocument
 logger = logging.getLogger(__name__)
 
 
+def _load_silero_model():
+    from pathlib import Path
+    local = Path.home() / '.cache' / 'torch' / 'hub' / 'snakers4_silero-vad_master'
+    if local.exists():
+        m = torch.hub.load(
+            str(local), 'silero_vad',
+            source='local', trust_repo=True
+        )
+        # torch.hub.load may return (model, utils) where utils is a tuple
+        # Convert tuple utils into a simple namespace with attributes for
+        # compatibility with existing code that expects attribute access.
+        model, utils = m
+        if isinstance(utils, tuple):
+            from types import SimpleNamespace
+            ns = SimpleNamespace()
+            for item in utils:
+                name = getattr(item, '__name__', None)
+                if name:
+                    setattr(ns, name, item)
+            return model, ns
+        return model, utils
+    return torch.hub.load(
+        'snakers4/silero-vad', 'silero_vad',
+        force_reload=False
+    )
+
+
 class SileroVADFilter(AudioFilter):
     name = "silero_vad"
 
@@ -53,9 +80,7 @@ class SileroVADFilter(AudioFilter):
                 return None
             # Lazy-load silero vad model
             try:
-                self._model, utils = torch.hub.load(
-                    'snakers4/silero-vad', 'silero_vad', force_reload=False
-                )
+                self._model, utils = _load_silero_model()
                 # utils may contain get_speech_timestamps
                 self._utils = utils
             except Exception as e:
@@ -190,9 +215,7 @@ class VADSegmenter(AudioFanOutTransformer):
             if not HAS_TORCH:
                 return None
             try:
-                self._model, utils = torch.hub.load(
-                    'snakers4/silero-vad', 'silero_vad', force_reload=False
-                )
+                self._model, utils = _load_silero_model()
                 self._utils = utils
             except Exception as e:
                 logger.warning(f"Failed to load Silero VAD model: {e}. Falling back to energy-based VAD.")
