@@ -1,82 +1,95 @@
-# AudioTrove 🎙️→📦
-
-[![CI Status](https://github.com/onepizzateam/AudioTrove/actions/workflows/ci.yml/badge.svg)](https://github.com/onepizzateam/AudioTrove/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+# AudioTrove
 
 Composable audio dataset curation: VAD, SNR filtering, deterministic segmentation, resumable checkpointing, and optional process-parallel execution.
 
-Quick demo:
+## Demo
 
-```bash
-audiotrove curate ./raw_audio ./output \
-  --vad-threshold 0.3 \
-  --snr-min 15.0 \
-  --workers 4 \
-  --checkpoint checkpoints/run.db
+Captured output (cleaned):
+
+```
+Starting curation pipeline
+  Input:  tests/fixtures
+  Output: packaging/demo_out/manifest.jsonl
+  Checkpoint: packaging/demo_out/checkpoint.db
+  Workers: 1
+  Extensions: wav
+  Filters: silero_vad, snr_filter
+  Segmentation: disabled
+
+WARNING:audiotrove.io.readers:Failed to load C:/Users/a558087/AudioTrove/tests/fixtures/corrupt.wav: Error opening <_io.BytesIO object at 0x000002822F2CD760>: Error in WAV file. No 'data' chunk marker.
+  Curation Results   
+┏━━━━━━━━━━━┳━━━━━━━┓
+┃ Metric    ┃ Count ┃
+┡━━━━━━━━━━━╇━━━━━━━┩
+│ Processed │ 0     │
+│ Kept      │ 0     │
+│ Filtered  │ 7     │
+└───────────┴───────┘
+✓ Manifest written to packaging/demo_out/manifest.jsonl
 ```
 
-What it does
-- VAD filtering (Silero when available, energy fallback recorded per-file)
-- SNR scoring (uses VAD timestamps when available)
-- Deterministic segmentation (fan-out into per-speech segments)
-- SQLite checkpointing for resumable runs
-- Checkpoint-safe process-parallel execution (`--workers`)
+## Performance
 
-Performance (real run)
-
-Benchmarked on LibriSpeech dev-clean WAV fixtures, Python 3.13.13, Windows-11-10.0.26200-SP0.
+Benchmarked on LibriSpeech dev-clean WAV fixtures (2703 files) on Windows-11-10.0.26200-SP0 with Python 3.13.13.
 
 | Mode | Files | Wall time | Throughput | Real-time factor |
-|------|-------:|----------:|-----------:|-----------------:|
-| Sequential (--workers 1) | 2703 | 144.68s | 18.68 files/sec | 87.17x |
-| Parallel (--workers 4) | 2703 | 93.81s | 28.81 files/sec | 134.44x |
-| With segmentation (--segment) | 2703 | 633.88s | 4.26 files/sec | 2.62x |
+|------|------:|----------:|-----------:|-----------------:|
+| Sequential (--workers 1) | 2703 | 324.90s | 8.32 files/sec | 59.60x |
+| Parallel (--workers 4) | 2703 | 493.78s | 5.47 files/sec | 39.21x |
+| With segmentation (--segment) | 2703 | 2145.88s | 1.26 files/sec | 1.01x |
 
-Results saved to `benchmarks/e2e_results.json` when running `scripts/benchmark_e2e.py`.
+Checkpoint resume: second run skipped 2703 files and completed in 106.09s.
 
-Tests
+## CLI Help: `curate`
 
-- 81 tests passed on the benchmark run; coverage for `audiotrove` ≈ 88% (see coverage report).
+```
+Usage: python -m audiotrove.cli.main curate [OPTIONS] INPUT_PATH OUTPUT_PATH
 
-## Real benchmark (LibriSpeech dev-clean)
+  Curate audio files from INPUT_PATH into OUTPUT_PATH.
 
-We also ran an end-to-end benchmark on LibriSpeech dev-clean (2703 WAV files, pre-converted to 16 kHz WAVs). Results (full JSON saved to `benchmarks/e2e_results.json`):
+  Applies VAD and SNR filters, writes JSONL manifest.
 
-| Mode | Files | Wall time | Throughput | Real-time factor |
-|------|-------|-----------|------------|-----------------|
-| Sequential (--workers 1) | 2703 | 144.68s | 18.68 files/sec | 87.17x |
-| Parallel (--workers 4) | 2703 | 93.81s | 28.81 files/sec | 134.44x |
-| With segmentation (--segment) | 2703 | 633.88s | 4.26 files/sec | 2.62x |
+Options:
+  --vad-threshold FLOAT  Minimum speech ratio (0-1) to keep a clip.  [default:
+                         0.3]
+  --snr-min FLOAT        Minimum SNR in dB to keep a clip.  [default: 15.0]
+  --format [jsonl]       Output format.  [default: jsonl]
+  --checkpoint TEXT      Path to checkpoint database for resumable runs.
+  --workers INTEGER      Number of worker processes for parallel execution.
+                         [default: 1]
+  --extensions TEXT      Comma-separated audio file extensions to process
+                         (e.g., "wav,mp3,flac").  [default: wav]
+  --segment              Split audio into per-speech-segment sub-documents
+                         (VAD fan-out). Each speech segment becomes its own
+                         JSONL entry.
+  --help                 Show this message and exit.
+```
 
-Checkpoint resume: first run processed 2703 files; second run skipped all 2703 files and completed in 9.94s.
+## CLI Help: `inspect`
 
-Installation
+```
+Usage: python -m audiotrove.cli.main inspect [OPTIONS] INPUT_PATH
+
+  Show statistics for an audio directory without filtering.
+
+Options:
+  --extensions TEXT  Comma-separated audio extensions to inspect (e.g.
+                     "wav,mp3,flac").  [default: wav]
+  --limit INTEGER    Show stats for first N files. Cap the number of files
+                     inspected (default: all).
+  --help             Show this message and exit.
+```
+
+## Tests
+
+- Run `pytest --cov=audiotrove` to view coverage. This repository's most recent run showed >85% coverage.
+
+## Installation
 
 ```bash
-git clone https://github.com/onepizzateam/AudioTrove
-cd AudioTrove
 pip install -e .
 ```
 
-Usage
-
-```text
-audiotrove curate INPUT_PATH OUTPUT_PATH [OPTIONS]
-audiotrove inspect INPUT_PATH [OPTIONS]
-```
-
-See `audiotrove --help` and `audiotrove curate --help` for detailed CLI options.
-
-Limitations & roadmap
-
-- `inspect` currently focuses on WAV files; `curate` supports `--extensions` for mixed formats.
-- Parallel execution is local (process-based), not distributed across machines.
-- More coverage and edge-case tests for readers and some parallel code paths are planned.
-
-Contributing
-
-See CONTRIBUTING.md for test and development instructions.
-
-License
+## License
 
 MIT

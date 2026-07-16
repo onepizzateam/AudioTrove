@@ -7,30 +7,30 @@
   "fixture_count": 2703,
   "runs": {
     "sequential": {
-      "elapsed_s": 144.681,
+      "elapsed_s": 324.904,
       "files_processed": 2703,
-      "files_kept": 1828,
-      "throughput_files_per_sec": 18.68,
-      "real_time_factor": 87.17
+      "files_kept": 2698,
+      "throughput_files_per_sec": 8.32,
+      "real_time_factor": 59.6
     },
     "parallel_4": {
-      "elapsed_s": 93.813,
+      "elapsed_s": 493.776,
       "files_processed": 2703,
-      "files_kept": 1828,
-      "throughput_files_per_sec": 28.81,
-      "real_time_factor": 134.44
+      "files_kept": 2698,
+      "throughput_files_per_sec": 5.47,
+      "real_time_factor": 39.21
     },
     "segmentation": {
-      "elapsed_s": 633.878,
+      "elapsed_s": 2145.876,
       "files_processed": 2703,
-      "files_kept": 51901,
-      "throughput_files_per_sec": 4.26,
-      "real_time_factor": 2.62
+      "files_kept": 686,
+      "throughput_files_per_sec": 1.26,
+      "real_time_factor": 1.01
     }
   },
   "checkpoint_resume": {
     "first_run_processed": 2703,
     "second_run_skipped": 2703,
-    "second_run_elapsed_s": 9.935
+    "second_run_elapsed_s": 106.087
   }
 }
