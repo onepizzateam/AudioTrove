@@ -1,0 +1,19 @@
+{
+  "doc_id": "d9efa01d2b6465be",
+  "source_path": "C:/tmp/librispeech_dev_clean/clip_00000.flac",
+  "sample_rate": 16000,
+  "duration_seconds": 5.855,
+  "metadata": {
+    "vad_speech_ratio": 0.8574,
+    "vad_speech_timestamps": [
+      {
+        "start": 8224,
+        "end": 88544
+      }
+    ],
+    "vad_backend": "silero",
+    "snr_db": 39.24
+  },
+  "pipeline_version": "0.1.0",
+  "processed_at": "2026-07-16T11:07:37.232819Z"
+}

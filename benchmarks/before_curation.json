@@ -1,0 +1,9 @@
+{
+  "total_clips": 500,
+  "total_hours": 0.99,
+  "mean_duration_s": 7.1,
+  "mean_snr_db": 30.3,
+  "mean_vad_ratio": 0.804,
+  "pct_above_15db_snr": 92.4,
+  "pct_above_03_vad": 100.0
+}
