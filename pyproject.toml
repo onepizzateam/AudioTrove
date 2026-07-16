@@ -78,3 +78,6 @@ follow_imports = "skip"
 [tool.setuptools.dynamic]
 version = {attr = "audiotrove.__version__"}
 
+[tool.setuptools.packages.find]
+include = ["audiotrove*"]
+
