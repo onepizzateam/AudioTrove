@@ -1,0 +1,19 @@
+Starting curation pipeline
+  Input:  tests/fixtures
+  Output: demo_out/manifest.jsonl
+  Checkpoint: demo_out/checkpoint.db
+  Workers: 1
+  Extensions: wav
+  Filters: silero_vad
+  Segmentation: disabled
+
+Skipping invalid WAV: tests/fixtures/corrupt.wav
+  Curation Results   
+┏━━━━━━━━━━━┳━━━━━━━┓
+┃ Metric    ┃ Count ┃
+┡━━━━━━━━━━━╇━━━━━━━┩
+│ Processed │ 6     │
+│ Kept      │ 5     │
+│ Filtered  │ 1     │
+└───────────┴───────┘
+✓ Manifest written to demo_out/manifest.jsonl

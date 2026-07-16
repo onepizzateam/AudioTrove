@@ -98,7 +98,8 @@ def curate(
 
     # Build pipeline
     pipeline = []
-    if vad_threshold < 1.0:
+    # Treat a vad_threshold of 0.0 as "no VAD filtering" (accept all audio).
+    if vad_threshold > 0.0 and vad_threshold < 1.0:
         pipeline.append(SileroVADFilter(min_speech_ratio=vad_threshold))
     if snr_min > 0:
         pipeline.append(SNRFilter(min_snr_db=snr_min))

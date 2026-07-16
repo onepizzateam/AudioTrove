@@ -1,0 +1,13 @@
+WARNING:audiotrove.io.readers:Failed to load C:/Users/a558087/AudioTrove/tests/fixtures/corrupt.wav: Error opening <_io.BytesIO object at 0x000001D1B5D1EE80>: Error in WAV file. No 'data' chunk marker.
+ Audio Directory Stats (5 files) 
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Statistic       ┃ Value       ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ Files           │ 5           │
+│ Total duration  │ 0.01h (20s) │
+│ Mean duration   │ 4.06s       │
+│ Median duration │ 5.00s       │
+│ Min duration    │ 0.30s       │
+│ Max duration    │ 5.00s       │
+│ Format: .wav    │ 5           │
+└─────────────────┴─────────────┘

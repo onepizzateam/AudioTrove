@@ -38,6 +38,18 @@ Tests
 
 - 81 tests passed on the benchmark run; coverage for `audiotrove` ≈ 88% (see coverage report).
 
+## Real benchmark (LibriSpeech dev-clean)
+
+We also ran an end-to-end benchmark on LibriSpeech dev-clean (2703 WAV files, pre-converted to 16 kHz WAVs). Results (full JSON saved to `benchmarks/e2e_results.json`):
+
+| Mode | Files | Wall time | Throughput | Real-time factor |
+|------|-------|-----------|------------|-----------------|
+| Sequential (--workers 1) | 2703 | 144.68s | 18.68 files/sec | 87.17x |
+| Parallel (--workers 4) | 2703 | 93.81s | 28.81 files/sec | 134.44x |
+| With segmentation (--segment) | 2703 | 633.88s | 4.26 files/sec | 2.62x |
+
+Checkpoint resume: first run processed 2703 files; second run skipped all 2703 files and completed in 9.94s.
+
 Installation
 
 ```bash

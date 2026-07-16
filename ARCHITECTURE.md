@@ -36,6 +36,8 @@ Rationale: keep parallelism and checkpointing out of block code; executor manage
 - Filesystem abstraction: `fsspec` for `file://`, `s3://`, etc.
 - CLI: `click` for command-line entrypoints; `rich` for console rendering.
 
+Benchmarks: heavy end-to-end benchmarks are stored under `benchmarks/e2e_results.json`. For large parallel runs, pre-cache the Silero model in the local torch hub cache (e.g. run the included `scripts/precache_silero.py` or otherwise populate `~/.cache/torch/hub/snakers4_silero-vad_master`) before launching many worker processes. This avoids GitHub rate-limiting and repeated network load when worker processes attempt to call `torch.hub.load` concurrently.
+
 Rationale: these libraries are standard in ML/ASR environments and keep installs predictable for users who run PyTorch-based stacks.
 
 ## Phase 0 implemented components (status)

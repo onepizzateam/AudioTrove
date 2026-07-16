@@ -148,8 +148,13 @@ class SileroVADFilter(AudioFilter):
                     ts = []
                     for t in timestamps:
                         ts.append({"start": int(t["start"]), "end": int(t["end"])})
-                    timestamps = ts
-                    backend_used = "silero"
+                    # If Silero returned no timestamps (empty list), treat as no result
+                    # so we fall back to the energy-based VAD which handles synthetic/test signals.
+                    if not ts:
+                        timestamps = None
+                    else:
+                        timestamps = ts
+                        backend_used = "silero"
             except Exception as e:
                 logger.warning(
                     f"Silero VAD inference failed for {doc.source_path}: {e}. Falling back to energy-based VAD."
@@ -277,8 +282,12 @@ class VADSegmenter(AudioFanOutTransformer):
                     ts = []
                     for t in timestamps:
                         ts.append({"start": int(t["start"]), "end": int(t["end"])})
-                    timestamps = ts
-                    backend_used = "silero"
+                    # If Silero returned no timestamps, fall back to energy VAD
+                    if not ts:
+                        timestamps = None
+                    else:
+                        timestamps = ts
+                        backend_used = "silero"
             except Exception as e:
                 logger.debug(f"Silero VAD failed: {e}. Using energy fallback.")
                 timestamps = None
