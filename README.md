@@ -102,7 +102,7 @@ Sample manifest entry:
 
 ## real-world results
 
-Benchmarked on LibriSpeech dev-clean (500-clip sample, ~0.99h) — the standard evaluation corpus for speech processing tooling (used by Lhotse, SpeechBrain, and NVIDIA NeMo).
+Benchmarked on LibriSpeech dev-clean (2703 clips, 5.4h, ~0.99h) — the standard evaluation corpus for speech processing tooling (used by Lhotse, SpeechBrain, and NVIDIA NeMo).
 
 ### before curation
 

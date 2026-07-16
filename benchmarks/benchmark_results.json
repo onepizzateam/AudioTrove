@@ -1,32 +1,32 @@
 {
   "sequential": {
     "workers": 1,
-    "elapsed_s": 87.4,
-    "files_processed": 500,
-    "files_kept": 462,
-    "files_filtered": 38,
-    "kept_pct": 92.4,
-    "kept_hours": 0.93,
-    "rtfx": 40.8,
-    "clips_per_sec": 5.72,
-    "mean_snr_kept": 31.8,
-    "mean_vad_kept": 0.805
+    "elapsed_s": 661.678,
+    "files_processed": 2703,
+    "files_kept": 2120,
+    "files_filtered": 583,
+    "kept_pct": 78.4,
+    "kept_hours": 4.31,
+    "rtfx": 23.5,
+    "clips_per_sec": 4.09,
+    "mean_snr_kept": 33.05,
+    "mean_vad_kept": 0.849
   },
   "parallel_4": {
     "workers": 4,
-    "elapsed_s": 99.0,
+    "elapsed_s": null,
     "files_processed": 0,
     "files_kept": 0,
     "files_filtered": 0,
     "kept_pct": 0,
     "kept_hours": 0.0,
-    "rtfx": 36.0,
+    "rtfx": 0.0,
     "clips_per_sec": 0.0,
     "mean_snr_kept": null,
     "mean_vad_kept": null
   },
   "checkpoint_resume": {
-    "elapsed_ms": 2183.0,
-    "clips_skipped": 500
+    "elapsed_ms": 0.0,
+    "clips_skipped": 0
   }
 }
