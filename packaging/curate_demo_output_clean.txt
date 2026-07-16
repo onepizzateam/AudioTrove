@@ -1,19 +1,19 @@
 Starting curation pipeline
   Input:  tests/fixtures
-  Output: demo_out/manifest.jsonl
-  Checkpoint: demo_out/checkpoint.db
+  Output: packaging/demo_out/manifest.jsonl
+  Checkpoint: packaging/demo_out/checkpoint.db
   Workers: 1
   Extensions: wav
-  Filters: silero_vad
+  Filters: silero_vad, snr_filter
   Segmentation: disabled
 
-Skipping invalid WAV: tests/fixtures/corrupt.wav
+WARNING:audiotrove.io.readers:Failed to load C:/Users/a558087/AudioTrove/tests/fixtures/corrupt.wav: Error opening <_io.BytesIO object at 0x000002822F2CD760>: Error in WAV file. No 'data' chunk marker.
   Curation Results   
 ┏━━━━━━━━━━━┳━━━━━━━┓
 ┃ Metric    ┃ Count ┃
 ┡━━━━━━━━━━━╇━━━━━━━┩
-│ Processed │ 6     │
-│ Kept      │ 5     │
-│ Filtered  │ 1     │
+│ Processed │ 0     │
+│ Kept      │ 0     │
+│ Filtered  │ 7     │
 └───────────┴───────┘
-✓ Manifest written to demo_out/manifest.jsonl
+✓ Manifest written to packaging/demo_out/manifest.jsonl
