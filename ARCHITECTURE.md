@@ -38,6 +38,27 @@ Rationale: keep parallelism and checkpointing out of block code; executor manage
 
 Benchmarks: heavy end-to-end benchmarks are stored under `benchmarks/e2e_results.json`. For large parallel runs, pre-cache the Silero model in the local torch hub cache (e.g. run the included `scripts/precache_silero.py` or otherwise populate `~/.cache/torch/hub/snakers4_silero-vad_master`) before launching many worker processes. This avoids GitHub rate-limiting and repeated network load when worker processes attempt to call `torch.hub.load` concurrently.
 
+### VAD model loading
+
+- The Silero VAD model is lazy-loaded via a helper that prefers a local torch hub repository at `~/.cache/torch/hub/snakers4_silero-vad_master`.
+- When the local cache exists, the loader invokes:
+
+```
+torch.hub.load(str(local_path), "silero_vad", source="local", trust_repo=True)
+```
+
+to avoid network requests from worker processes. The hub loader may return a `(model, utils)` tuple where `utils` can itself be a tuple of callables rather than an attribute namespace. The helper therefore wraps `utils` into a `types.SimpleNamespace` mapping function objects by their `__name__` so calling code can access `utils.get_speech_timestamps` as an attribute.
+
+- Filters and segmenters exclude the `_model` and `_utils` fields from `__getstate__` so that pickling for `ProcessPoolExecutor` does not serialize large torch artifacts. Worker processes will lazily reload the model on first access.
+- If Silero cannot be loaded, or if inference returns an empty timestamp list on synthetic/test signals, the code falls back to an energy-based VAD. The chosen backend is recorded per-file in `doc.metadata['vad_backend']`.
+
+### Parallel execution & checkpointing
+
+- `LocalExecutor` uses `concurrent.futures.ProcessPoolExecutor` when `num_workers > 1` to fan document processing out across worker processes.
+- The main process is the sole writer of the JSONL manifest and the SQLite checkpoint database; worker processes run filters and transformers and return processed documents (or lists of documents for fan-out transformers) back to the main process for final writing.
+- Checkpointing is implemented with a simple SQLite table recording processed `doc_id` values. The executor writes to the checkpoint DB in the main process to avoid concurrent-writer issues. Use WAL mode for robust concurrent reads during long runs.
+- Filters and transformers must be picklable; heavy runtime assets (e.g., torch models) should be lazy-loaded in the worker process and excluded from pickling via `__getstate__`/`__setstate__` semantics.
+
 Rationale: these libraries are standard in ML/ASR environments and keep installs predictable for users who run PyTorch-based stacks.
 
 ## Phase 0 implemented components (status)
