@@ -1,0 +1,2 @@
+Checking dist\audiotrove-0.1.0-py3-none-any.whl: PASSED
+Checking dist\audiotrove-0.1.0.tar.gz: PASSED

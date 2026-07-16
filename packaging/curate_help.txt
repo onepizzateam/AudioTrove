@@ -1,0 +1,20 @@
+Usage: python -m audiotrove.cli.main curate [OPTIONS] INPUT_PATH OUTPUT_PATH
+
+  Curate audio files from INPUT_PATH into OUTPUT_PATH.
+
+  Applies VAD and SNR filters, writes JSONL manifest.
+
+Options:
+  --vad-threshold FLOAT  Minimum speech ratio (0-1) to keep a clip.  [default:
+                         0.3]
+  --snr-min FLOAT        Minimum SNR in dB to keep a clip.  [default: 15.0]
+  --format [jsonl]       Output format.  [default: jsonl]
+  --checkpoint TEXT      Path to checkpoint database for resumable runs.
+  --workers INTEGER      Number of worker processes for parallel execution.
+                         [default: 1]
+  --extensions TEXT      Comma-separated audio file extensions to process
+                         (e.g., "wav,mp3,flac").  [default: wav]
+  --segment              Split audio into per-speech-segment sub-documents
+                         (VAD fan-out). Each speech segment becomes its own
+                         JSONL entry.
+  --help                 Show this message and exit.

@@ -2,9 +2,11 @@ import pytest
 from abc import ABC, abstractmethod
 from audiotrove.base import AudioFilter, AudioTransformer
 
+
 class MockAudioDocument:
     def __init__(self):
         pass
+
 
 def test_audio_filter_interface():
     # NOTE: `pytest` is imported at module scope; do not re-import here.
@@ -23,8 +25,9 @@ def test_audio_filter_interface():
             return "concrete"
 
     assert issubclass(ConcreteFilter, AudioFilter)
-    assert hasattr(ConcreteFilter, 'filter')
-    assert hasattr(ConcreteFilter, 'name')
+    assert hasattr(ConcreteFilter, "filter")
+    assert hasattr(ConcreteFilter, "name")
+
 
 def test_audio_transformer_interface():
     # NOTE: `pytest` is imported at module scope; do not re-import here.
@@ -33,6 +36,7 @@ def test_audio_transformer_interface():
 
     with pytest.raises(TypeError):
         MyTransformer()
+
     class ConcreteTransformer(AudioTransformer):
         def transform(self, doc: MockAudioDocument) -> MockAudioDocument:
             return doc
@@ -42,5 +46,5 @@ def test_audio_transformer_interface():
             return "concrete"
 
     assert issubclass(ConcreteTransformer, AudioTransformer)
-    assert hasattr(ConcreteTransformer, 'transform')
-    assert hasattr(ConcreteTransformer, 'name')
+    assert hasattr(ConcreteTransformer, "transform")
+    assert hasattr(ConcreteTransformer, "name")

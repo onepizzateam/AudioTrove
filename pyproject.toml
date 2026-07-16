@@ -5,20 +5,23 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "audiotrove"
 dynamic = ["version"]
-description = "Composable audio dataset curation pipeline"
+description = "Composable audio dataset curation pipeline: VAD, SNR, segmentation, checkpointing"
 readme = "README.md"
-license = "MIT"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
-authors = [{name = "Palak Jha"}]
+authors = [{name = "Palak Jha", email = "palakjha916@gmail.com"}]
 keywords = ["audio", "dataset", "machine-learning", "vad", "speech-processing", "data-curation"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
 ]
 
 dependencies = [
@@ -43,8 +46,12 @@ dev = [
     "mypy",
     "click[testing]",
     "scipy>=1.10.0",
-    "torchcodec>=0.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/onepizzateam/AudioTrove"
+Repository = "https://github.com/onepizzateam/AudioTrove"
+"Bug Tracker" = "https://github.com/onepizzateam/AudioTrove/issues"
 
 [project.scripts]
 audiotrove = "audiotrove.cli.main:cli"

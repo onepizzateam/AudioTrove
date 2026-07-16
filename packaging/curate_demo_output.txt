@@ -1,0 +1,19 @@
+[36mStarting curation pipeline[0m
+  Input:  tests\fixtures
+  Output: demo_out\manifest.jsonl
+  Checkpoint: demo_out\checkpoint.db
+  Workers: [1;36m1[0m
+  Extensions: wav
+  Filters: silero_vad
+  Segmentation: disabled
+
+Skipping invalid WAV: tests\fixtures\corrupt.wav
+[3m  Curation Results   [0m
+┏━━━━━━━━━━━┳━━━━━━━┓
+┃[1m [0m[1mMetric   [0m[1m [0m┃[1m [0m[1mCount[0m[1m [0m┃
+┡━━━━━━━━━━━╇━━━━━━━┩
+│[36m [0m[36mProcessed[0m[36m [0m│[35m [0m[35m6    [0m[35m [0m│
+│[36m [0m[36mKept     [0m[36m [0m│[35m [0m[35m5    [0m[35m [0m│
+│[36m [0m[36mFiltered [0m[36m [0m│[35m [0m[35m1    [0m[35m [0m│
+└───────────┴───────┘
+[32m✓ Manifest written to demo_out\manifest.jsonl[0m

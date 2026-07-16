@@ -1,4 +1,5 @@
 """Tests for SileroVADFilter."""
+
 import pytest
 from audiotrove.filters.vad import SileroVADFilter
 
@@ -8,7 +9,7 @@ def test_vad_keeps_clean_speech(speech_clean_fixture):
     vad = SileroVADFilter(min_speech_ratio=0.1)
     result = vad.filter(speech_clean_fixture)
     assert result is True
-    assert speech_clean_fixture.metadata['vad_speech_ratio'] > 0.1
+    assert speech_clean_fixture.metadata["vad_speech_ratio"] > 0.1
 
 
 def test_vad_discards_silence(silence_fixture):
@@ -16,7 +17,7 @@ def test_vad_discards_silence(silence_fixture):
     vad = SileroVADFilter(min_speech_ratio=0.3)
     result = vad.filter(silence_fixture)
     assert result is False
-    assert silence_fixture.metadata['vad_speech_ratio'] == 0.0
+    assert silence_fixture.metadata["vad_speech_ratio"] == 0.0
 
 
 def test_vad_discards_music(music_fixture):
@@ -30,8 +31,8 @@ def test_vad_metadata_populated(speech_clean_fixture):
     """VAD should populate metadata for downstream stages."""
     vad = SileroVADFilter()
     vad.filter(speech_clean_fixture)
-    assert 'vad_speech_ratio' in speech_clean_fixture.metadata
-    assert 'vad_speech_timestamps' in speech_clean_fixture.metadata
+    assert "vad_speech_ratio" in speech_clean_fixture.metadata
+    assert "vad_speech_timestamps" in speech_clean_fixture.metadata
 
 
 def test_vad_threshold_configurable(speech_noisy_fixture):
@@ -49,7 +50,7 @@ def test_vad_returns_bool():
     import numpy as np
     from audiotrove.document import AudioDocument
     from audiotrove.utils.hashing import make_doc_id
-    
+
     audio = np.zeros(16000, dtype=np.float32)
     doc = AudioDocument(
         audio=audio,

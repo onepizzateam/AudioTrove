@@ -1,4 +1,5 @@
 """Pytest fixtures that load real WAV files from tests/fixtures/."""
+
 import pytest
 import numpy as np
 from pathlib import Path
@@ -11,8 +12,9 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 def _load_fixture(name: str) -> AudioDocument:
     import wave
+
     path = FIXTURES_DIR / name
-    with wave.open(str(path), 'rb') as wf:
+    with wave.open(str(path), "rb") as wf:
         sr = wf.getframerate()
         nch = wf.getnchannels()
         sampwidth = wf.getsampwidth()

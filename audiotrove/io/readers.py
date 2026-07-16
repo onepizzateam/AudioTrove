@@ -1,6 +1,7 @@
 """
 Audio readers.
 """
+
 import logging
 from typing import Iterator, Optional, Union, List
 import numpy as np
@@ -14,6 +15,12 @@ try:
     import torchaudio
 except Exception:  # pragma: no cover
     torchaudio = None
+import io as _io
+
+try:
+    import soundfile as _soundfile
+except Exception:  # pragma: no cover - optional, we'll raise if needed at runtime
+    _soundfile = None
 
 from audiotrove.document import AudioDocument
 from audiotrove.utils.hashing import make_doc_id
@@ -28,9 +35,13 @@ class LocalAudioReader:
     downmixes to mono. Supports multiple glob patterns for multi-format support.
     """
 
-    def __init__(self, path_pattern: Union[str, List[str]], target_sample_rate: int = 16000,
-                 max_duration_seconds: Optional[float] = None,
-                 min_duration_seconds: float = 0.5):
+    def __init__(
+        self,
+        path_pattern: Union[str, List[str]],
+        target_sample_rate: int = 16000,
+        max_duration_seconds: Optional[float] = None,
+        min_duration_seconds: float = 0.5,
+    ):
         # Support both single pattern (str) and multiple patterns (list)
         if isinstance(path_pattern, str):
             self.path_patterns = [path_pattern]
@@ -45,7 +56,7 @@ class LocalAudioReader:
             raise RuntimeError("fsspec is required for LocalAudioReader")
 
         seen_paths = set()  # Track paths we've already yielded to avoid duplicates
-        
+
         for pattern in self.path_patterns:
             fs, path = fsspec.core.url_to_fs(pattern)
             for fpath in fs.glob(path):
@@ -53,7 +64,7 @@ class LocalAudioReader:
                 if fpath in seen_paths:
                     continue
                 seen_paths.add(fpath)
-                
+
                 try:
                     doc = self._load(fpath, fs)
                     yield doc
@@ -66,16 +77,56 @@ class LocalAudioReader:
         if torchaudio is None:
             raise RuntimeError("torchaudio is required to load audio files")
 
-        with fs.open(path, 'rb') as f:
-            waveform, sr = torchaudio.load(f)
+        # Prefer torchaudio.load, but fall back to soundfile if torchaudio's
+        # torchcodec backend fails (common when torchcodec/ffmpeg libs missing).
+        waveform = None
+        sr = None
+        with fs.open(path, "rb") as f:
+            try:
+                waveform, sr = torchaudio.load(f)
+            except Exception:
+                # Attempt to use soundfile fallback
+                if _soundfile is None:
+                    raise
 
+                f.seek(0)
+                data = f.read()
+                bio = _io.BytesIO(data)
+                audio_sf, sr = _soundfile.read(bio, dtype="float32")
+                # audio_sf shape: (frames,) or (frames, channels)
+                import torch
+                import numpy as _np
+
+                if audio_sf.ndim > 1:
+                    audio_mono = audio_sf.mean(axis=1)
+                else:
+                    audio_mono = audio_sf
+
+                waveform = torch.from_numpy(_np.asarray(audio_mono, dtype=_np.float32)).unsqueeze(0)
+
+        # waveform: (channels, samples)
         # waveform: (channels, samples)
         if waveform.ndim > 1 and waveform.shape[0] > 1:
             waveform = waveform.mean(dim=0, keepdim=True)
 
         if sr != self.target_sr:
-            resampler = torchaudio.transforms.Resample(sr, self.target_sr)
-            waveform = resampler(waveform)
+            try:
+                resampler = torchaudio.transforms.Resample(sr, self.target_sr)
+                waveform = resampler(waveform)
+            except Exception:
+                # Fallback to simple numpy resampling if torchaudio resampler fails
+                import numpy as _np
+
+                num_samples = int(waveform.shape[-1] * float(self.target_sr) / float(sr))
+                audio_np = waveform.squeeze(0).numpy()
+                resampled = _np.interp(
+                    _np.linspace(0, len(audio_np), num_samples, endpoint=False),
+                    _np.arange(len(audio_np)),
+                    audio_np,
+                )
+                import torch
+
+                waveform = torch.from_numpy(resampled.astype(_np.float32)).unsqueeze(0)
 
         audio = waveform.squeeze(0).numpy().astype(np.float32)
         duration = float(len(audio)) / float(self.target_sr)

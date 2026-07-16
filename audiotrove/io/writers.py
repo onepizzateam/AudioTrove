@@ -9,6 +9,7 @@ from audiotrove.document import AudioDocument
 from audiotrove import __version__
 import datetime
 
+
 class JSONLWriter:
     def __init__(self, output_path: str):
         self.output_path = Path(output_path)
@@ -24,6 +25,6 @@ class JSONLWriter:
             "pipeline_version": __version__,
             "processed_at": datetime.datetime.utcnow().isoformat() + "Z",
         }
-        with self.output_path.open('a') as f:
+        with self.output_path.open("a") as f:
             json.dump(data, f)
-            f.write('\n')
+            f.write("\n")

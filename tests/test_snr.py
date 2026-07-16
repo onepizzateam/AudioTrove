@@ -1,4 +1,5 @@
 """Tests for SNRFilter."""
+
 import pytest
 import numpy as np
 from audiotrove.filters.snr import SNRFilter
@@ -11,7 +12,7 @@ def test_snr_populates_metadata(speech_clean_fixture):
     """SNR filter should populate snr_db in metadata."""
     snr = SNRFilter(min_snr_db=0.0)
     snr.filter(speech_clean_fixture)
-    assert 'snr_db' in speech_clean_fixture.metadata
+    assert "snr_db" in speech_clean_fixture.metadata
 
 
 def test_snr_returns_bool(speech_clean_fixture):
@@ -34,7 +35,7 @@ def test_snr_fallback_without_vad():
     snr = SNRFilter(min_snr_db=0.0)
     result = snr.filter(doc)
     assert isinstance(result, bool)
-    assert 'snr_db' in doc.metadata
+    assert "snr_db" in doc.metadata
 
 
 def test_snr_with_vad_metadata(speech_clean_fixture):
@@ -42,14 +43,14 @@ def test_snr_with_vad_metadata(speech_clean_fixture):
     # First run VAD to populate timestamps
     vad = SileroVADFilter(min_speech_ratio=0.0)
     vad.filter(speech_clean_fixture)
-    
+
     # Then run SNR
     snr = SNRFilter(min_snr_db=0.0)
     snr.filter(speech_clean_fixture)
-    
+
     # SNR should be computed and metadata populated
-    assert 'snr_db' in speech_clean_fixture.metadata
-    assert isinstance(speech_clean_fixture.metadata['snr_db'], (float, int))
+    assert "snr_db" in speech_clean_fixture.metadata
+    assert isinstance(speech_clean_fixture.metadata["snr_db"], (float, int))
 
 
 def test_snr_threshold_filtering():
@@ -63,7 +64,7 @@ def test_snr_threshold_filtering():
         duration_seconds=1.0,
         doc_id=make_doc_id("noisy.wav"),
     )
-    
+
     # Strict threshold (very high SNR required)
     snr = SNRFilter(min_snr_db=50.0)
     result = snr.filter(doc)
@@ -79,7 +80,7 @@ def test_snr_clean_audio_passes():
     # Add very small noise
     noise = np.random.normal(0, 0.01, 16000).astype(np.float32)
     clean_audio = (signal + noise).astype(np.float32)
-    
+
     doc = AudioDocument(
         audio=clean_audio,
         sample_rate=16000,
@@ -87,7 +88,7 @@ def test_snr_clean_audio_passes():
         duration_seconds=1.0,
         doc_id=make_doc_id("clean.wav"),
     )
-    
+
     # Threshold at 0 dB (should accept)
     snr = SNRFilter(min_snr_db=0.0)
     result = snr.filter(doc)

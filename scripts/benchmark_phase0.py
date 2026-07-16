@@ -2,6 +2,7 @@
 Performance benchmark for Phase 0 components.
 Creates synthetic audio files and measures throughput.
 """
+
 import json
 import tempfile
 import time
@@ -26,6 +27,7 @@ def create_synthetic_audio_files(num_files: int, output_dir: Path, duration_s: f
     sr = 16000
     try:
         import torchaudio
+
         use_torchaudio = True
     except Exception:
         use_torchaudio = False
@@ -37,13 +39,14 @@ def create_synthetic_audio_files(num_files: int, output_dir: Path, duration_s: f
 
         audio_path = output_dir / f"audio_{i:04d}.wav"
         if use_torchaudio:
-            waveform_tensor = __import__('torch').from_numpy(waveform)
+            waveform_tensor = __import__("torch").from_numpy(waveform)
             torchaudio.save(str(audio_path), waveform_tensor, sr)
         else:
             # Write 16-bit PCM WAV via stdlib wave
             import wave as _wave
-            int16 = (waveform * 32767).astype('int16')
-            with _wave.open(str(audio_path), 'wb') as wf:
+
+            int16 = (waveform * 32767).astype("int16")
+            with _wave.open(str(audio_path), "wb") as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
                 wf.setframerate(sr)
@@ -54,10 +57,11 @@ def benchmark_reader(input_dir: Path, num_files: int):
     """Benchmark LocalAudioReader throughput."""
     start = time.time()
     import wave as _wave
+
     files = list(input_dir.glob("*.wav"))
     count = 0
     for f in files:
-        with _wave.open(str(f), 'rb') as wf:
+        with _wave.open(str(f), "rb") as wf:
             frames = wf.getnframes()
         count += 1
         if count >= num_files:
@@ -71,7 +75,7 @@ def benchmark_vad_filter(num_samples: int = 100):
     """Benchmark SileroVADFilter throughput."""
     vad = SileroVADFilter(min_speech_ratio=0.3)
     sr = 16000
-    
+
     start = time.time()
     for i in range(num_samples):
         # Create synthetic audio
@@ -94,7 +98,7 @@ def benchmark_snr_filter(num_samples: int = 100):
     """Benchmark SNRFilter throughput."""
     snr = SNRFilter(min_snr_db=15.0)
     sr = 16000
-    
+
     start = time.time()
     for i in range(num_samples):
         # Create synthetic audio
@@ -132,7 +136,7 @@ def benchmark_end_to_end(input_dir: Path, output_dir: Path, num_files: int):
     def reader_gen():
         for fpath in sorted(input_dir.glob("*.wav")):
             try:
-                with _wave.open(str(fpath), 'rb') as wf:
+                with _wave.open(str(fpath), "rb") as wf:
                     sr = wf.getframerate()
                     nch = wf.getnchannels()
                     frames = wf.readframes(wf.getnframes())
@@ -142,7 +146,13 @@ def benchmark_end_to_end(input_dir: Path, output_dir: Path, num_files: int):
                 duration = float(len(audio)) / float(sr)
                 if duration < 0.5:
                     continue
-                yield AudioDocument(audio=audio, sample_rate=sr, source_path=str(fpath), duration_seconds=duration, doc_id=make_doc_id(str(fpath)))
+                yield AudioDocument(
+                    audio=audio,
+                    sample_rate=sr,
+                    source_path=str(fpath),
+                    duration_seconds=duration,
+                    doc_id=make_doc_id(str(fpath)),
+                )
             except Exception as e:
                 print(f"Failed to load {fpath}: {e}")
 
@@ -153,13 +163,13 @@ def benchmark_end_to_end(input_dir: Path, output_dir: Path, num_files: int):
     stats = executor.run(reader_gen(), writer)
     elapsed = time.time() - start
 
-    throughput = stats.get('kept', 0) / elapsed if elapsed > 0 else 0
+    throughput = stats.get("kept", 0) / elapsed if elapsed > 0 else 0
     return throughput, stats, elapsed
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
-    
+
     # Configuration
     num_test_files = 100
     print(f"Phase 0 Performance Benchmark")
@@ -168,14 +178,14 @@ if __name__ == '__main__':
     print(f"Audio duration: 5 seconds per file")
     print(f"Sample rate: 16000 Hz")
     print()
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         input_dir = tmpdir / "input"
         output_dir = tmpdir / "output"
         input_dir.mkdir()
         output_dir.mkdir()
-        
+
         # Create synthetic audio files
         print("Generating synthetic audio files...")
         try:
@@ -185,7 +195,7 @@ if __name__ == '__main__':
             print(f"  ✗ Cannot create audio files (torchaudio needed): {e}")
             print("  Skipping file I/O benchmarks")
             sys.exit(1)
-        
+
         # Benchmark reader
         print("\n1. LocalAudioReader Benchmark")
         print("-" * 60)
@@ -193,8 +203,12 @@ if __name__ == '__main__':
         print(f"  Files read: {count}/{num_test_files}")
         print(f"  Time: {elapsed:.2f}s")
         print(f"  Throughput: {throughput:.1f} files/sec")
-        print(f"  Target: > 500 files/sec ✓" if throughput > 500 else f"  Target: > 500 files/sec ✗ (got {throughput:.1f})")
-        
+        print(
+            f"  Target: > 500 files/sec ✓"
+            if throughput > 500
+            else f"  Target: > 500 files/sec ✗ (got {throughput:.1f})"
+        )
+
         # Benchmark VAD filter
         print("\n2. SileroVADFilter Benchmark")
         print("-" * 60)
@@ -202,8 +216,12 @@ if __name__ == '__main__':
         print(f"  Clips processed: {vad_count}")
         print(f"  Time: {vad_elapsed:.2f}s")
         print(f"  Throughput: {vad_throughput:.1f} clips/sec")
-        print(f"  Target: > 10 clips/sec ✓" if vad_throughput > 10 else f"  Target: > 10 clips/sec ✗ (got {vad_throughput:.1f})")
-        
+        print(
+            f"  Target: > 10 clips/sec ✓"
+            if vad_throughput > 10
+            else f"  Target: > 10 clips/sec ✗ (got {vad_throughput:.1f})"
+        )
+
         # Benchmark SNR filter
         print("\n3. SNRFilter Benchmark")
         print("-" * 60)
@@ -211,26 +229,38 @@ if __name__ == '__main__':
         print(f"  Clips processed: {snr_count}")
         print(f"  Time: {snr_elapsed:.2f}s")
         print(f"  Throughput: {snr_throughput:.1f} clips/sec")
-        print(f"  Target: > 200 clips/sec ✓" if snr_throughput > 200 else f"  Target: > 200 clips/sec ✗ (got {snr_throughput:.1f})")
-        
+        print(
+            f"  Target: > 200 clips/sec ✓"
+            if snr_throughput > 200
+            else f"  Target: > 200 clips/sec ✗ (got {snr_throughput:.1f})"
+        )
+
         # Benchmark end-to-end pipeline
         print("\n4. End-to-End Pipeline Benchmark")
         print("-" * 60)
         try:
-            e2e_throughput, stats, e2e_elapsed = benchmark_end_to_end(input_dir, output_dir, num_test_files)
+            e2e_throughput, stats, e2e_elapsed = benchmark_end_to_end(
+                input_dir, output_dir, num_test_files
+            )
             print(f"  Files processed: {stats.get('total', 0)}")
             print(f"  Files kept: {stats.get('kept', 0)}")
             print(f"  Time: {e2e_elapsed:.2f}s")
             print(f"  Throughput: {e2e_throughput:.1f} clips/sec")
-            print(f"  Target: > 8 clips/sec ✓" if e2e_throughput > 8 else f"  Target: > 8 clips/sec ✗ (got {e2e_throughput:.1f})")
-            
+            print(
+                f"  Target: > 8 clips/sec ✓"
+                if e2e_throughput > 8
+                else f"  Target: > 8 clips/sec ✗ (got {e2e_throughput:.1f})"
+            )
+
             # Phase 0 gate: 100 files (5s each) should complete < 3 minutes
             theoretical_time = (num_test_files * 5.0) / e2e_throughput
-            print(f"\n  Phase 0 Gate: 100 files (5s each) at {e2e_throughput:.1f} clips/sec = {theoretical_time:.1f}s")
+            print(
+                f"\n  Phase 0 Gate: 100 files (5s each) at {e2e_throughput:.1f} clips/sec = {theoretical_time:.1f}s"
+            )
             print(f"  Gate (< 180s): {'✓ PASS' if theoretical_time < 180 else '✗ FAIL'}")
         except Exception as e:
             print(f"  ✗ Error running end-to-end benchmark: {e}")
-        
+
         # Save results
         results = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -251,9 +281,9 @@ if __name__ == '__main__':
                 "elapsed_seconds": snr_elapsed,
             },
         }
-        
+
         results_path = Path("benchmarks") / "phase0_baseline.json"
         results_path.parent.mkdir(exist_ok=True)
-        with open(results_path, 'w') as f:
+        with open(results_path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"\n✓ Results saved to {results_path}")

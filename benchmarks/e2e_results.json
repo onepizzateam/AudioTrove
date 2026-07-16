@@ -4,33 +4,33 @@
     "python": "3.13.13",
     "cpu_count": 12
   },
-  "fixture_count": 7,
+  "fixture_count": 2703,
   "runs": {
     "sequential": {
-      "elapsed_s": 0.141,
-      "files_processed": 6,
-      "files_kept": 4,
-      "throughput_files_per_sec": 42.62,
-      "real_time_factor": 142.05
+      "elapsed_s": 144.681,
+      "files_processed": 2703,
+      "files_kept": 1828,
+      "throughput_files_per_sec": 18.68,
+      "real_time_factor": 87.17
     },
     "parallel_4": {
-      "elapsed_s": 6.671,
-      "files_processed": 6,
-      "files_kept": 4,
-      "throughput_files_per_sec": 0.9,
-      "real_time_factor": 3.0
+      "elapsed_s": 93.813,
+      "files_processed": 2703,
+      "files_kept": 1828,
+      "throughput_files_per_sec": 28.81,
+      "real_time_factor": 134.44
     },
     "segmentation": {
-      "elapsed_s": 2.612,
-      "files_processed": 6,
-      "files_kept": 97,
-      "throughput_files_per_sec": 2.3,
-      "real_time_factor": 1.17
+      "elapsed_s": 633.878,
+      "files_processed": 2703,
+      "files_kept": 51901,
+      "throughput_files_per_sec": 4.26,
+      "real_time_factor": 2.62
     }
   },
   "checkpoint_resume": {
-    "first_run_processed": 6,
-    "second_run_skipped": 6,
-    "second_run_elapsed_s": 0.03
+    "first_run_processed": 2703,
+    "second_run_skipped": 2703,
+    "second_run_elapsed_s": 9.935
   }
 }
