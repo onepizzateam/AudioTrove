@@ -14,19 +14,22 @@
   },
   "parallel_4": {
     "workers": 4,
-    "elapsed_s": null,
-    "files_processed": 0,
-    "files_kept": 0,
-    "files_filtered": 0,
-    "kept_pct": 0,
-    "kept_hours": 0.0,
-    "rtfx": 0.0,
-    "clips_per_sec": 0.0,
-    "mean_snr_kept": null,
-    "mean_vad_kept": null
+    "elapsed_s": 378.221,
+    "files_processed": 2703,
+    "files_kept": 2560,
+    "files_filtered": 143,
+    "kept_pct": 94.7,
+    "kept_hours": 5.14,
+    "rtfx": 48.9,
+    "clips_per_sec": 7.15,
+    "mean_snr_kept": 33.76,
+    "mean_vad_kept": 0.848,
+    "backend": "ThreadPoolExecutor (Windows shared Silero model)"
   },
   "checkpoint_resume": {
-    "elapsed_ms": 0.0,
-    "clips_skipped": 0
+    "first_run_processed": 2703,
+    "first_run_elapsed_s": 291.529,
+    "second_run_skipped": 2703,
+    "second_run_elapsed_s": 8.182
   }
 }

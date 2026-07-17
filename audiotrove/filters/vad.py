@@ -5,6 +5,7 @@ Voice activity detection.
 import logging
 import numpy as np
 import hashlib
+import threading
 
 try:
     import torch
@@ -17,6 +18,7 @@ from audiotrove.base import AudioFilter, AudioFanOutTransformer
 from audiotrove.document import AudioDocument
 
 logger = logging.getLogger(__name__)
+_SILERO_INFERENCE_LOCK = threading.Lock()
 
 
 def _load_silero_model():
@@ -137,13 +139,14 @@ class SileroVADFilter(AudioFilter):
                 if get_speech_timestamps is not None:
                     # silero expects torch.Tensor
                     audio_t = torch.from_numpy(audio)
-                    timestamps = get_speech_timestamps(
-                        audio_t,
-                        model,
-                        sampling_rate=sr,
-                        threshold=self.threshold,
-                        window_size_samples=self.window_size,
-                    )
+                    with _SILERO_INFERENCE_LOCK:
+                        timestamps = get_speech_timestamps(
+                            audio_t,
+                            model,
+                            sampling_rate=sr,
+                            threshold=self.threshold,
+                            window_size_samples=self.window_size,
+                        )
                     # convert to simple list of dicts
                     ts = []
                     for t in timestamps:
@@ -272,13 +275,14 @@ class VADSegmenter(AudioFanOutTransformer):
                 get_speech_timestamps = getattr(self._utils, "get_speech_timestamps", None)
                 if get_speech_timestamps is not None:
                     audio_t = torch.from_numpy(audio)
-                    timestamps = get_speech_timestamps(
-                        audio_t,
-                        model,
-                        sampling_rate=sr,
-                        threshold=self.threshold,
-                        window_size_samples=self.window_size,
-                    )
+                    with _SILERO_INFERENCE_LOCK:
+                        timestamps = get_speech_timestamps(
+                            audio_t,
+                            model,
+                            sampling_rate=sr,
+                            threshold=self.threshold,
+                            window_size_samples=self.window_size,
+                        )
                     ts = []
                     for t in timestamps:
                         ts.append({"start": int(t["start"]), "end": int(t["end"])})

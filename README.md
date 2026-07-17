@@ -102,38 +102,38 @@ Sample manifest entry:
 
 ## real-world results
 
-Benchmarked on LibriSpeech dev-clean (2703 clips, 5.4h, ~0.99h) — the standard evaluation corpus for speech processing tooling (used by Lhotse, SpeechBrain, and NVIDIA NeMo).
+Benchmarked on the full LibriSpeech dev-clean corpus (2703 clips, 5.39h) — the standard evaluation corpus for speech processing tooling (used by Lhotse, SpeechBrain, and NVIDIA NeMo).
 
 ### before curation
 
 | Metric | Value |
 |--------|-------|
-| Total clips | 500 |
-| Total duration | 0.99h |
-| Mean clip duration | 7.1s |
-| Mean SNR (all clips) | 30.3 dB |
-| Mean VAD speech ratio (all clips) | 0.804 |
+| Total clips | 2703 |
+| Total duration | 5.39h |
+| Mean clip duration | 7.2s |
+| Mean SNR (all clips) | 32.5 dB |
+| Mean VAD speech ratio (all clips) | 0.847 |
 
 ### after curation (`--vad-threshold 0.3 --snr-min 15`)
 
 | Metric | Value |
 |--------|-------|
-| Kept clips | 462 (92.4%) |
-| Filtered clips | 38 (7.6%) |
-| Total kept duration | 0.93h |
-| Mean SNR (kept clips) | 31.8 dB |
-| Mean VAD speech ratio (kept clips) | 0.805 |
+| Kept clips | 2120 (78.4%) |
+| Filtered clips | 583 (21.6%) |
+| Total kept duration | 4.31h |
+| Mean SNR (kept clips) | 33.05 dB |
+| Mean VAD speech ratio (kept clips) | 0.849 |
 
 ### throughput
 
-| Mode | RTFx | Wall time for 0.99h corpus |
+| Mode | RTFx | Wall time for 5.39h corpus |
 |------|------|--------------------------|
-| Sequential (`--workers 1`) | 40.8x | 87.4s |
-| Parallel (`--workers 4`) | 36.0x | 99.0s |
+| Sequential (`--workers 1`) | 23.5x | 661.678s |
+| Parallel (`--workers 4`) | 48.9x | 378.221s |
 
-> First run downloads the Silero VAD model (~5MB, one-time). Numbers above reflect warm-cache runs. Run `python scripts/benchmark_e2e.py --corpus-dir <your-audio-dir>` to reproduce on your hardware.
+Checkpoint resume: first run processed 2703 clips in 291.529s; the second run skipped 2703 clips in 8.182s.
 
-> Note: with 500 clips, parallel spawn overhead can exceed per-file speedup. Parallel scaling improves on corpora of 5000+ clips.
+> First run downloads the Silero VAD model (~5MB, one-time). Numbers above reflect warm-cache runs. On Windows, the four-worker benchmark uses a shared-model thread pool because stateful Silero inference cannot safely share one model across spawned processes. Run `python scripts/benchmark_e2e.py --corpus-dir <your-audio-dir>` to reproduce on your hardware.
 
 ---
 

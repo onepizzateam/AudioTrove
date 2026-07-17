@@ -6,7 +6,8 @@ import logging
 import sqlite3
 from pathlib import Path
 from typing import Optional
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import os
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,12 @@ def _worker_process_doc(doc, pipeline):
     error_block = None
 
     try:
+        # Windows workers receive a freshly unpickled pipeline. Load the model
+        # on that actual instance before processing the first document.
+        for block in pipeline:
+            if block.__class__.__name__ in ("SileroVADFilter", "VADSegmenter"):
+                _ = block.model
+
         for block in pipeline:
             new_docs = []
 
@@ -91,6 +98,25 @@ def _worker_process_doc(doc, pipeline):
         keep = False
 
     return (docs, keep, error, error_block)
+
+
+def _preload_silero_model() -> None:
+    """Preload Silero VAD model in worker process to avoid repeated hub downloads."""
+    try:
+        # Import locally to avoid importing torch in main process unnecessarily
+        from audiotrove.filters.vad import SileroVADFilter
+
+        v = SileroVADFilter()
+        _ = v.model  # access to force lazy load
+    except Exception:
+        # If loading fails, proceed without raising — worker will fallback to energy VAD
+        pass
+
+
+def _worker_init(preload_silero: bool) -> None:
+    """Initializer run in each worker process."""
+    if preload_silero:
+        _preload_silero_model()
 
 
 class LocalExecutor:
@@ -275,6 +301,18 @@ class LocalExecutor:
         self._init_db()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
+        # Windows process workers cannot share the loaded torch model and four
+        # independent Silero instances can terminate the pool under memory
+        # pressure. Threads share the model safely for this CPU-bound pipeline;
+        # retain processes on platforms where fork/spawn is stable.
+        if os.name == "nt":
+            for block in self.pipeline:
+                if block.__class__.__name__ in ("SileroVADFilter", "VADSegmenter"):
+                    _ = block.model
+            executor_type = ThreadPoolExecutor
+        else:
+            executor_type = ProcessPoolExecutor
+
         # Collect all unprocessed documents first
         pending_docs = []
         for doc in reader:
@@ -291,8 +329,18 @@ class LocalExecutor:
         if not pending_docs:
             return stats
 
+        # Determine whether to preload Silero in workers (if pipeline contains VAD blocks)
+        preload_silero = any(
+            getattr(block, '__class__', None).__name__ in ('SileroVADFilter', 'VADSegmenter')
+            or hasattr(block, 'model')
+            for block in self.pipeline
+        )
+
         # Process documents in parallel
-        with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+        executor_kwargs = {"max_workers": self.num_workers}
+        if executor_type is ProcessPoolExecutor:
+            executor_kwargs.update(initializer=_worker_init, initargs=(preload_silero,))
+        with executor_type(**executor_kwargs) as executor:
             # Submit all tasks
             future_to_doc = {
                 executor.submit(_worker_process_doc, doc, self.pipeline): doc
