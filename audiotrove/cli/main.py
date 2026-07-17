@@ -65,6 +65,12 @@ def cli(verbose):
     default=False,
     help="Split audio into per-speech-segment sub-documents (VAD fan-out). Each speech segment becomes its own JSONL entry.",
 )
+@click.option(
+    "--enhance",
+    is_flag=True,
+    default=False,
+    help="Optional neural denoising via DeepFilterNet2 (requires pip install audiotrove[enhance]). Runs before VAD/SNR filtering.",
+)
 def curate(
     input_path,
     output_path,
@@ -75,6 +81,7 @@ def curate(
     workers,
     extensions,
     segment,
+    enhance,
 ):
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
 
@@ -85,6 +92,9 @@ def curate(
     from audiotrove.filters.vad import SileroVADFilter
     from audiotrove.filters.snr import SNRFilter
     from audiotrove.executor.local import LocalExecutor
+
+    if enhance:
+        from audiotrove.filters.enhance import DeepFilterEnhancer
 
     # Validate paths
     input_p = Path(input_path)
@@ -98,6 +108,8 @@ def curate(
 
     # Build pipeline
     pipeline = []
+    if enhance:
+        pipeline.append(DeepFilterEnhancer())
     # Treat a vad_threshold of 0.0 as "no VAD filtering" (accept all audio).
     if vad_threshold > 0.0 and vad_threshold < 1.0:
         pipeline.append(SileroVADFilter(min_speech_ratio=vad_threshold))
@@ -147,6 +159,8 @@ def curate(
     console.print(f"  Workers: {workers}")
     console.print(f"  Extensions: {', '.join(exts)}")
     console.print(f"  Filters: {', '.join(b.name for b in pipeline) or 'none'}")
+    if enhance:
+        console.print("Enhancement enabled (DeepFilterNet2). First run downloads ~60MB model.")
     console.print(
         f"  Segmentation: {'enabled' if 'segment' in locals() and segment else 'disabled'}"
     )

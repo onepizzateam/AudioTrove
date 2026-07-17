@@ -159,6 +159,8 @@ Options:
   --segment              Split audio into per-speech-segment sub-documents
                          (VAD fan-out). Each speech segment becomes its own
                          JSONL entry.
+  --enhance              Optional neural denoising via DeepFilterNet2 (requires
+                         `pip install audiotrove[enhance]`). Runs before VAD/SNR filtering.
   --help                 Show this message and exit.
 ```
 
