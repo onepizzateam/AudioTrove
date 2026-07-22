@@ -28,6 +28,7 @@ dependencies = [
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
     "numpy>=1.24.0",
+    "soundfile",
     "fsspec>=2023.1.0",
     "click>=8.1.0",
     "rich>=13.0.0",
