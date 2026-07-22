@@ -34,7 +34,7 @@ def test_parallel_run_with_fake_executor(monkeypatch, tmp_path):
             return self._res
 
     class FakeExecutor:
-        def __init__(self, max_workers):
+        def __init__(self, max_workers, **kwargs):
             self.max_workers = max_workers
             self._futures = []
 
