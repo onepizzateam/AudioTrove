@@ -331,8 +331,8 @@ class LocalExecutor:
 
         # Determine whether to preload Silero in workers (if pipeline contains VAD blocks)
         preload_silero = any(
-            getattr(block, '__class__', None).__name__ in ('SileroVADFilter', 'VADSegmenter')
-            or hasattr(block, 'model')
+            getattr(block, "__class__", None).__name__ in ("SileroVADFilter", "VADSegmenter")
+            or hasattr(block, "model")
             for block in self.pipeline
         )
 

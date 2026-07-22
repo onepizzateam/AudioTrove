@@ -55,9 +55,7 @@ class DeepFilterEnhancer(AudioTransformer):
         import torch
 
         original = np.asarray(audio, dtype=np.float32)
-        enhanced_input = self._resample(
-            original, sample_rate, self._required_sample_rate
-        )
+        enhanced_input = self._resample(original, sample_rate, self._required_sample_rate)
         self._load_model()
 
         tensor = torch.from_numpy(enhanced_input)
@@ -69,9 +67,7 @@ class DeepFilterEnhancer(AudioTransformer):
             enhanced = enhanced.detach().cpu().numpy()
 
         enhanced = np.asarray(enhanced, dtype=np.float32).reshape(-1)
-        result = self._resample(
-            enhanced, self._required_sample_rate, sample_rate
-        )
+        result = self._resample(enhanced, self._required_sample_rate, sample_rate)
         if len(result) != len(original):
             result = np.resize(result, len(original)).astype(np.float32)
         return result.astype(np.float32, copy=False)

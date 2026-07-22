@@ -75,7 +75,36 @@ class LocalAudioReader:
 
     def _load(self, path: str, fs) -> Optional[AudioDocument]:
         if torchaudio is None:
-            raise RuntimeError("torchaudio is required to load audio files")
+            if _soundfile is None:
+                raise RuntimeError("torchaudio or soundfile is required to load audio files")
+
+            with fs.open(path, "rb") as f:
+                audio, sr = _soundfile.read(f, dtype="float32")
+
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)
+            if sr != self.target_sr:
+                num_samples = int(len(audio) * float(self.target_sr) / float(sr))
+                audio = np.interp(
+                    np.linspace(0, len(audio), num_samples, endpoint=False),
+                    np.arange(len(audio)),
+                    audio,
+                ).astype(np.float32)
+
+            duration = float(len(audio)) / float(self.target_sr)
+            if duration < self.min_duration:
+                return None
+            if self.max_duration and duration > self.max_duration:
+                audio = audio[: int(self.max_duration * self.target_sr)]
+                duration = self.max_duration
+
+            return AudioDocument(
+                audio=np.asarray(audio, dtype=np.float32),
+                sample_rate=self.target_sr,
+                source_path=path,
+                duration_seconds=duration,
+                doc_id=make_doc_id(path),
+            )
 
         # Prefer torchaudio.load, but fall back to soundfile if torchaudio's
         # torchcodec backend fails (common when torchcodec/ffmpeg libs missing).
