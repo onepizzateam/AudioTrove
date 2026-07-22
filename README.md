@@ -50,6 +50,29 @@ WARNING:audiotrove.io.readers:Failed to load C:/Users/a558087/AudioTrove/tests/f
 
 ---
 
+## TTS Pipeline
+
+```python
+from audiotrove.pipelines.tts import tts_pipeline
+summary = tts_pipeline(
+    "raw_audio/", "tts_out/", min_duration=2.0, snr_min=20.0
+)
+print(summary)
+```
+
+```bash
+audiotrove curate raw_audio/ tts_out/ --tts --tts-min-duration 2 --tts-max-duration 15 --tts-snr-min 20
+```
+
+| Framework | Direct output |
+|---|---|
+| F5-TTS | ✓ `filelist.txt` |
+| StyleTTS2 | ✓ `metadata.csv` |
+| CosyVoice | ✓ `filelist.txt` |
+| VITS/VITS2 | ✓ `filelist.txt` |
+
+---
+
 ## how it compares
 
 | | NeMo Curator | Data-Juicer | webrtcvad (DIY) | AudioTrove |
@@ -114,26 +137,22 @@ Benchmarked on the full LibriSpeech dev-clean corpus (2703 clips, 5.39h) — the
 | Mean SNR (all clips) | 32.5 dB |
 | Mean VAD speech ratio (all clips) | 0.847 |
 
-### after curation (`--vad-threshold 0.3 --snr-min 15`)
+### after curation (`min_duration=2s`, `max_duration=15s`, `snr_min=20dB`)
 
 | Metric | Value |
 |--------|-------|
-| Kept clips | 2120 (78.4%) |
-| Filtered clips | 583 (21.6%) |
-| Total kept duration | 4.31h |
-| Mean SNR (kept clips) | 33.05 dB |
-| Mean VAD speech ratio (kept clips) | 0.849 |
+| Kept clips | 2123 (78.5%) |
+| Filtered clips | 580 (21.5%) |
+| Total kept duration | 3.64h |
 
 ### throughput
 
-| Mode | RTFx | Wall time for 5.39h corpus |
-|------|------|--------------------------|
-| Sequential (`--workers 1`) | 23.5x | 661.678s |
-| Parallel (`--workers 4`) | 48.9x | 378.221s |
+| Mode | RTFx | Clips/sec | Wall time for 5.39h corpus |
+|------|------|-----------|--------------------------|
+| Sequential (`--workers 1`) | 6.3x | 0.88 | 3083.50s |
+| Parallel (`--workers 4`) | 9.9x | 1.37 | 1968.61s |
 
-Checkpoint resume: first run processed 2703 clips in 291.529s; the second run skipped 2703 clips in 8.182s.
-
-> First run downloads the Silero VAD model (~5MB, one-time). Numbers above reflect warm-cache runs. On Windows, the four-worker benchmark uses a shared-model thread pool because stateful Silero inference cannot safely share one model across spawned processes. Run `python scripts/benchmark_e2e.py --corpus-dir <your-audio-dir>` to reproduce on your hardware.
+Both runs used real Silero VAD from a warm cache. Run `python scripts/benchmark_e2e.py --corpus-dir <your-audio-dir>` to reproduce on your hardware.
 
 ---
 

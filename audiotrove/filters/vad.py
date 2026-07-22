@@ -41,7 +41,7 @@ def _load_silero_model():
                     setattr(ns, name, item)
             return model, ns
         return model, utils
-    return torch.hub.load("snakers4/silero-vad", "silero_vad", force_reload=False)
+    return torch.hub.load("snakers4/silero-vad", "silero_vad", force_reload=False, trust_repo=True)
 
 
 class SileroVADFilter(AudioFilter):

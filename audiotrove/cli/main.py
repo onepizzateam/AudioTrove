@@ -71,6 +71,26 @@ def cli(verbose):
     default=False,
     help="Optional neural denoising via DeepFilterNet2 (requires pip install audiotrove[enhance]). Runs before VAD/SNR filtering.",
 )
+@click.option(
+    "--tts", is_flag=True, default=False, help="Run the TTS curation and manifest pipeline."
+)
+@click.option(
+    "--tts-min-duration",
+    default=2.0,
+    type=float,
+    show_default=True,
+    help="Minimum TTS clip duration in seconds.",
+)
+@click.option(
+    "--tts-max-duration",
+    default=15.0,
+    type=float,
+    show_default=True,
+    help="Maximum TTS clip duration in seconds.",
+)
+@click.option(
+    "--tts-snr-min", default=20.0, type=float, show_default=True, help="Minimum TTS SNR in dB."
+)
 def curate(
     input_path,
     output_path,
@@ -82,6 +102,10 @@ def curate(
     extensions,
     segment,
     enhance,
+    tts,
+    tts_min_duration,
+    tts_max_duration,
+    tts_snr_min,
 ):
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
 
@@ -105,6 +129,26 @@ def curate(
         raise SystemExit(1)
 
     output_p.mkdir(parents=True, exist_ok=True)
+
+    if tts:
+        from audiotrove.pipelines.tts import tts_pipeline
+
+        summary = tts_pipeline(
+            input_path=input_path,
+            output_path=output_path,
+            min_duration=tts_min_duration,
+            max_duration=tts_max_duration,
+            snr_min=tts_snr_min,
+            extensions=[extension.strip().lower() for extension in extensions.split(",")],
+            workers=workers,
+        )
+        console.print("[cyan]TTS curation pipeline complete[/cyan]")
+        console.print(f"  Kept: {summary['kept']}")
+        console.print(f"  Filtered: {summary['filtered']}")
+        console.print(f"  Duration: {summary['total_duration_seconds']:.2f}s")
+        for output_file in summary["output_files"]:
+            console.print(f"  Output: {output_file}")
+        return
 
     # Build pipeline
     pipeline = []
