@@ -1,225 +1,90 @@
-# AudioTrove 🎙️→📦
+# AudioTrove
 
-[![CI](badge)] [![PyPI](badge)] [![License: MIT](badge)]
+AudioTrove curates local audio into training-ready datasets. It is for teams
+preparing speech/TTS corpora that need repeatable VAD, silence trimming, SNR,
+duration filtering, resumable processing, and manifests.
 
-**VAD filtering, SNR scoring, segmentation, and resumable checkpointing. One `pip install`. No GPU. No cluster.**
+See [ARCHITECTURE.md](ARCHITECTURE.md) for component contracts and extension
+details.
 
----
+## Install
 
-## the problem
-
-Every team curating speech data reimplements the same glue: load audio, run VAD, estimate SNR, checkpoint so a crash doesn't cost hours, write a manifest. The tools that do all of this — NVIDIA NeMo Curator, Alibaba Data-Juicer — require GPU infrastructure, Ray clusters, or hours of setup. There was no lightweight version for the common case: a researcher on a laptop or a single box who needs clean audio by tomorrow.
-
-AudioTrove is that version.
-
----
-
-## install
-
-```
-pip install audiotrove
-```
-
-That's it. No CUDA. No Ray. No multi-gigabyte framework. Silero VAD downloads its model (~5MB) on first run and caches it locally — subsequent runs are fully offline.
-
----
-
-## 30-second demo
-
-```
-Starting curation pipeline
-  Input:  tests/fixtures/
-  Output: demo_out/manifest.jsonl
-  Checkpoint: demo_out/checkpoint.db
-  Workers: 1
-  Extensions: wav
-  Filters: silero_vad, snr_filter
-  Segmentation: disabled
-
-WARNING:audiotrove.io.readers:Failed to load C:/Users/a558087/AudioTrove/tests/fixtures/corrupt.wav: Error opening <_io.BytesIO object at 0x000002342D0160C0>: Error in WAV file. No 'data' chunk marker.
-  Curation Results   
-┏━━━━━━━━━━━┳━━━━━━━┓
-┃ Metric    ┃ Count ┃
-┡━━━━━━━━━━━╇━━━━━━━┩
-│ Processed │ 5     │
-│ Kept      │ 0     │
-│ Filtered  │ 7     │
-└───────────┴───────┘
-✓ Manifest written to demo_out/manifest.jsonl
-```
-
----
-
-## TTS Pipeline
-
-```python
-from audiotrove.pipelines.tts import tts_pipeline
-summary = tts_pipeline(
-    "raw_audio/", "tts_out/", min_duration=2.0, snr_min=20.0
-)
-print(summary)
-```
+Python 3.10+ and a working PyTorch/torchaudio installation are required.
+`soundfile` provides the fallback decoder and WAV output; ffmpeg is useful when
+your torchaudio backend needs it.
 
 ```bash
-audiotrove curate raw_audio/ tts_out/ --tts --tts-min-duration 2 --tts-max-duration 15 --tts-snr-min 20
+git clone https://github.com/onepizzateam/AudioTrove.git
+cd AudioTrove
+python -m pip install -e .
+audiotrove --version
 ```
 
-| Framework | Direct output |
-|---|---|
-| F5-TTS | ✓ `filelist.txt` |
-| StyleTTS2 | ✓ `metadata.csv` |
-| CosyVoice | ✓ `filelist.txt` |
-| VITS/VITS2 | ✓ `filelist.txt` |
+## Quickstart
 
----
+Put WAV or FLAC files in a directory, then create curated WAVs and manifests:
 
-## how it compares
-
-| | NeMo Curator | Data-Juicer | webrtcvad (DIY) | AudioTrove |
-|---|---|---|---|---|
-| Install | `pip install nemo_toolkit[all]` (multi-GB, CUDA required) | `pip install py-data-juicer` + Ray | `pip install webrtcvad` + write VAD + SNR + checkpoint yourself | `pip install audiotrove` |
-| GPU required | Yes | Optional | No | **No** |
-| VAD | ✓ GPU-accelerated | ✓ | ✓ (WebRTC, lower accuracy) | ✓ Silero (CPU) |
-| SNR filtering | ✓ SIGMOS/UTMOS (GPU) | ✗ | ✗ | ✓ VAD-based (CPU) |
-| Checkpointing | ✓ | ✓ Ray | ✗ | ✓ SQLite |
-| Segmentation | ✓ | ✗ | ✗ | ✓ |
-| JSONL manifest | ✓ | ✓ | ✗ | ✓ |
-| Laptop-friendly | ✗ | ✗ | Partial | **✓** |
-| Time to first run | Hours | 30+ min | Write the code | **< 10 min** |
-
-**AudioTrove is not a replacement for NeMo Curator at GPU scale.** It's the tool for the common case: a corpus that fits on one machine, a researcher who needs clean audio without standing up infrastructure.
-
----
-
-## what it does
-
-- Apply Silero VAD (CPU) to detect speech regions.
-- Score clips by SNR using VAD timestamps when available.
-- Optionally segment files into per-speech segments (fan-out).
-- Resumable runs via an on-disk SQLite checkpoint and JSONL manifest output.
-
-Sample manifest entry:
-```
-{
-  "doc_id": "d9efa01d2b6465be",
-  "source_path": "C:/tmp/librispeech_dev_clean/clip_00000.flac",
-  "sample_rate": 16000,
-  "duration_seconds": 5.855,
-  "metadata": {
-    "vad_speech_ratio": 0.8574,
-    "vad_speech_timestamps": [
-      {
-        "start": 8224,
-        "end": 88544
-      }
-    ],
-    "vad_backend": "silero",
-    "snr_db": 39.24
-  },
-  "pipeline_version": "0.1.0",
-  "processed_at": "2026-07-16T11:07:37.232819Z"
-}
+```bash
+audiotrove curate ./recordings ./curated-tts --tts \
+  --extensions wav,flac --tts-min-duration 2 \
+  --tts-max-duration 15 --tts-snr-min 20 --workers 4
 ```
 
----
+The TTS path runs VAD, trims leading/trailing silence, estimates SNR, checks
+post-trim duration, writes curated WAVs, and appends manifests. See the
+architecture reference for the complete data flow.
 
-## real-world results
+## CLI reference
 
-Benchmarked on the full LibriSpeech dev-clean corpus (2703 clips, 5.39h) — the standard evaluation corpus for speech processing tooling (used by Lhotse, SpeechBrain, and NVIDIA NeMo).
+`audiotrove curate INPUT_PATH OUTPUT_PATH --tts` supports:
 
-### before curation
+| Flag | Type/default | Description |
+|---|---|---|
+| `--tts` | flag | Select the TTS pipeline. |
+| `--tts-min-duration` | float / `2.0` | Minimum post-trim duration. |
+| `--tts-max-duration` | float / `15.0` | Maximum post-trim duration. |
+| `--tts-snr-min` | float / `20.0` | Minimum SNR in dB. |
+| `--workers` | integer / `1` | Local executor worker count. |
+| `--extensions` | string / `wav` | Comma-separated directory extensions. |
 
-| Metric | Value |
-|--------|-------|
-| Total clips | 2703 |
-| Total duration | 5.39h |
-| Mean clip duration | 7.2s |
-| Mean SNR (all clips) | 32.5 dB |
-| Mean VAD speech ratio (all clips) | 0.847 |
+The generic `curate` path also exposes `--vad-threshold`, `--snr-min`,
+`--format`, `--checkpoint`, `--segment`, and `--enhance`; those apply to its
+JSONL workflow, not TTS mode.
 
-### after curation (`min_duration=2s`, `max_duration=15s`, `snr_min=20dB`)
+## Output format
 
-| Metric | Value |
-|--------|-------|
-| Kept clips | 2123 (78.5%) |
-| Filtered clips | 580 (21.5%) |
-| Total kept duration | 3.64h |
+The output directory contains `checkpoint.db`, curated WAVs, `metadata.csv`,
+and `filelist.txt`.
 
-### throughput
+```text
+# metadata.csv (LJSpeech)
+utterance.wav|speaker_00|transcription
 
-| Mode | RTFx | Clips/sec | Wall time for 5.39h corpus |
-|------|------|-----------|--------------------------|
-| Sequential (`--workers 1`) | 6.3x | 0.88 | 3083.50s |
-| Parallel (`--workers 4`) | 9.9x | 1.37 | 1968.61s |
-
-Both runs used real Silero VAD from a warm cache. Run `python scripts/benchmark_e2e.py --corpus-dir <your-audio-dir>` to reproduce on your hardware.
-
----
-
-## usage
-
-```
-Usage:  [OPTIONS] INPUT_PATH OUTPUT_PATH
-
-  Curate audio files from INPUT_PATH into OUTPUT_PATH.
-
-  Applies VAD and SNR filters, writes JSONL manifest.
-
-Options:
-  --vad-threshold FLOAT  Minimum speech ratio (0-1) to keep a clip.  [default:
-                         0.3]
-  --snr-min FLOAT        Minimum SNR in dB to keep a clip.  [default: 15.0]
-  --format [jsonl]       Output format.  [default: jsonl]
-  --checkpoint TEXT      Path to checkpoint database for resumable runs.
-  --workers INTEGER      Number of worker processes for parallel execution.
-                         [default: 1]
-  --extensions TEXT      Comma-separated audio file extensions to process
-                         (e.g., "wav,mp3,flac").  [default: wav]
-  --segment              Split audio into per-speech-segment sub-documents
-                         (VAD fan-out). Each speech segment becomes its own
-                         JSONL entry.
-  --enhance              Optional neural denoising via DeepFilterNet2 (requires
-                         `pip install audiotrove[enhance]`). Runs before VAD/SNR filtering.
-  --help                 Show this message and exit.
+# filelist.txt (F5-TTS)
+output/utterance.wav<TAB>4.2500<TAB>transcription
 ```
 
-```
-Usage:  [OPTIONS] INPUT_PATH
+The WAV path is the curated, post-trim output. Transcription is empty unless
+provided in document metadata.
 
-  Show statistics for an audio directory without filtering.
+## Benchmark
 
-Options:
-  --extensions TEXT  Comma-separated audio extensions to inspect (e.g.
-                     "wav,mp3,flac").  [default: wav]
-  --limit INTEGER    Show stats for first N files. Cap the number of files
-                     inspected (default: all).
-  --help             Show this message and exit.
-```
+Real Silero VAD, LibriSpeech dev-clean (2,703 FLAC clips; 5.39 h input):
 
----
+| Workers | Corpus | Kept | Filtered | Wall time | RTFx | Clips/sec |
+|---:|---|---:|---:|---:|---:|---:|
+| 1 | LibriSpeech dev-clean (2703 clips) | 2123 | 580 | 3083.50s | 6.3× | 0.88 |
+| 4 | LibriSpeech dev-clean (2703 clips) | 2123 | 580 | 1968.61s | 9.9× | 1.37 |
 
-## adding a custom filter
+RTFx is total input audio duration divided by wall time. The curated output
+contained 13,113.5 seconds (3.64 h) of WAV audio.
 
-Create a class that implements `filter(self, AudioDocument) -> bool` (for keep/skip) or an `AudioTransformer` that returns a modified `AudioDocument`. See `audiotrove/filters` for examples.
+## Extending AudioTrove
 
----
+Add filters, transformers, or exporters through the base interfaces and test
+their behavior in isolation plus an end-to-end pipeline test. The
+[extension guide](ARCHITECTURE.md#extension-guide) documents the contracts.
 
-## current limitations
+## License
 
-- Silero is run on CPU by default; for extremely large corpora consider GPU-accelerated tooling.
-- Hugging Face streaming datasets or network downloads may require an `HF_TOKEN` in restricted environments.
-- This tool focuses on simplicity and reproducibility, not on out-of-the-box state-of-the-art denoising or perceptual quality metrics.
-
----
-
-## roadmap
-
-- Improve parallel worker startup and model warm-up to scale better on medium-sized corpora.
-- Add optional prefetching for network-backed datasets.
-- Provide an official Docker image for reproducible benchmarking.
-
----
-
-## license
-
-MIT
+[MIT](LICENSE)
