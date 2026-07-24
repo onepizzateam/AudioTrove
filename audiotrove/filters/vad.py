@@ -84,7 +84,7 @@ class SileroVADFilter(AudioFilter):
                 self._model, utils = _load_silero_model()
                 # utils may contain get_speech_timestamps
                 self._utils = utils
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # If model cannot be loaded, log the failure and fallback
                 logger.warning(
                     f"Failed to load Silero VAD model: {e}. Falling back to energy-based VAD."
@@ -158,7 +158,7 @@ class SileroVADFilter(AudioFilter):
                     else:
                         timestamps = ts
                         backend_used = "silero"
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(
                     f"Silero VAD inference failed for {doc.source_path}: {e}. Falling back to energy-based VAD."
                 )
@@ -230,7 +230,7 @@ class VADSegmenter(AudioFanOutTransformer):
             try:
                 self._model, utils = _load_silero_model()
                 self._utils = utils
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(
                     f"Failed to load Silero VAD model: {e}. Falling back to energy-based VAD."
                 )
@@ -292,7 +292,7 @@ class VADSegmenter(AudioFanOutTransformer):
                     else:
                         timestamps = ts
                         backend_used = "silero"
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.debug(f"Silero VAD failed: {e}. Using energy fallback.")
                 timestamps = None
 

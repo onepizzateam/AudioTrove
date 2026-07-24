@@ -51,7 +51,7 @@ def _worker_process_doc(doc, pipeline):
                         keep = block.filter(d)
                         if keep:
                             new_docs.append(d)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         block_name = getattr(block, "name", block.__class__.__name__)
                         error = f"{block_name}: {e}"
                         error_block = block_name
@@ -67,7 +67,7 @@ def _worker_process_doc(doc, pipeline):
                     try:
                         expanded = block.transform(d)
                         new_docs.extend(expanded if isinstance(expanded, list) else [expanded])
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         block_name = getattr(block, "name", block.__class__.__name__)
                         error = f"{block_name}: {e}"
                         error_block = block_name
@@ -84,7 +84,7 @@ def _worker_process_doc(doc, pipeline):
                     try:
                         d = block.transform(d)
                         new_docs.append(d)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         block_name = getattr(block, "name", block.__class__.__name__)
                         error = f"{block_name}: {e}"
                         error_block = block_name
@@ -93,7 +93,7 @@ def _worker_process_doc(doc, pipeline):
                 if not keep:
                     break
                 docs = new_docs
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         error = str(e)
         keep = False
 
@@ -108,7 +108,7 @@ def _preload_silero_model() -> None:
 
         v = SileroVADFilter()
         _ = v.model  # access to force lazy load
-    except Exception:
+    except Exception:  # noqa: BLE001
         # If loading fails, proceed without raising — worker will fallback to energy VAD
         pass
 
@@ -222,10 +222,10 @@ class LocalExecutor:
                             keep = block.filter(d)
                             if keep:
                                 new_docs.append(d)
-                        except Exception as e:
+                        except Exception:  # noqa: BLE001
                             block_name = getattr(block, "name", block.__class__.__name__)
                             logger.exception(
-                                f"Filter {block_name} raised exception on {d.source_path}: {e}"
+                                f"Filter {block_name} raised exception on {d.source_path}"
                             )
                             stats["errors"] += 1
                             if block_name not in stats["errors_by_filter"]:
@@ -243,10 +243,10 @@ class LocalExecutor:
                         try:
                             expanded = block.transform(d)
                             new_docs.extend(expanded if isinstance(expanded, list) else [expanded])
-                        except Exception as e:
+                        except Exception:  # noqa: BLE001
                             block_name = getattr(block, "name", block.__class__.__name__)
                             logger.exception(
-                                f"Fan-out Transformer {block_name} raised exception on {d.source_path}: {e}"
+                                f"Fan-out Transformer {block_name} raised exception on {d.source_path}"
                             )
                             stats["errors"] += 1
                             if block_name not in stats["errors_by_filter"]:
@@ -264,10 +264,10 @@ class LocalExecutor:
                         try:
                             d = block.transform(d)
                             new_docs.append(d)
-                        except Exception as e:
+                        except Exception:  # noqa: BLE001
                             block_name = getattr(block, "name", block.__class__.__name__)
                             logger.exception(
-                                f"Transformer {block_name} raised exception on {d.source_path}: {e}"
+                                f"Transformer {block_name} raised exception on {d.source_path}"
                             )
                             stats["errors"] += 1
                             if block_name not in stats["errors_by_filter"]:
@@ -374,8 +374,8 @@ class LocalExecutor:
                         for doc in docs:
                             self._mark_processed(doc.doc_id)
 
-                except Exception as e:
-                    logger.exception(f"Worker task failed: {e}")
+                except Exception:  # noqa: BLE001
+                    logger.exception("Worker task failed")
                     stats["errors"] += 1
 
         return stats

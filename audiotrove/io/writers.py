@@ -23,7 +23,7 @@ class JSONLWriter:
             "duration_seconds": round(doc.duration_seconds, 4),
             "metadata": doc.metadata,
             "pipeline_version": __version__,
-            "processed_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "processed_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
         }
         with self.output_path.open("a") as f:
             json.dump(data, f)

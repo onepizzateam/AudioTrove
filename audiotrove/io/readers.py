@@ -8,18 +8,18 @@ import numpy as np
 
 try:
     import fsspec
-except Exception:  # pragma: no cover - fsspec optional in some envs
+except Exception:  # noqa: BLE001  # pragma: no cover - fsspec optional in some envs
     fsspec = None
 
 try:
     import torchaudio
-except Exception:  # pragma: no cover
+except Exception:  # noqa: BLE001  # pragma: no cover
     torchaudio = None
 import io as _io
 
 try:
     import soundfile as _soundfile
-except Exception:  # pragma: no cover - optional, we'll raise if needed at runtime
+except Exception:  # noqa: BLE001  # pragma: no cover - optional, we'll raise if needed at runtime
     _soundfile = None
 
 from audiotrove.document import AudioDocument
@@ -68,7 +68,7 @@ class LocalAudioReader:
                 try:
                     doc = self._load(fpath, fs)
                     yield doc
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     # Log and continue — don't let one bad file stop the whole load
                     logger.warning(f"Failed to load {fpath}: {e}")
                     yield None
@@ -113,7 +113,7 @@ class LocalAudioReader:
         with fs.open(path, "rb") as f:
             try:
                 waveform, sr = torchaudio.load(f)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # Attempt to use soundfile fallback
                 if _soundfile is None:
                     raise
@@ -142,7 +142,7 @@ class LocalAudioReader:
             try:
                 resampler = torchaudio.transforms.Resample(sr, self.target_sr)
                 waveform = resampler(waveform)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # Fallback to simple numpy resampling if torchaudio resampler fails
                 import numpy as _np
 
