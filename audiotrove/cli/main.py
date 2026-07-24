@@ -11,7 +11,9 @@ console = Console()
 
 @click.group()
 @click.version_option(version=__version__)
-@click.option("-v", "--verbose", is_flag=True, help="Enable verbose (DEBUG) logging.")
+@click.option(
+    "-v", "--verbose", is_flag=True, default=False, help="Enable verbose (DEBUG) logging."
+)
 def cli(verbose):
     """AudioTrove: Open-source audio data curation pipeline."""
     if verbose:

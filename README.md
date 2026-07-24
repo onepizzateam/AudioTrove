@@ -55,6 +55,13 @@ safely; on other platforms it uses process workers.
 pip install audiotrove
 ```
 
+AudioTrove works on CPU. If you want to avoid a full CUDA install, use the PyTorch CPU wheel first:
+
+```bash
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install audiotrove
+```
+
 For development:
 
 ```bash
@@ -143,6 +150,8 @@ Use `audiotrove curate INPUT_PATH OUTPUT_PATH --tts`. TTS-specific options are
 listed first. The remaining flags belong to the generic JSONL path and are
 accepted by the same command but do not configure `tts_pipeline()`.
 
+Global flag: `audiotrove --verbose curate ...` enables DEBUG logging.
+
 | Flag | Type | Default | Description |
 |---|---|---:|---|
 | `--tts` | flag | `False` | Run TTS curation and manifest export. |
@@ -157,7 +166,6 @@ accepted by the same command but do not configure `tts_pipeline()`.
 | `--checkpoint` | string | none | Generic-path checkpoint database path. |
 | `--segment` | flag | `False` | Generic-path VAD fan-out segmentation. |
 | `--enhance` | flag | `False` | Generic-path DeepFilterNet2 enhancement. |
-| `-v`, `--verbose` | flag | `False` | Enable DEBUG logging. |
 
 The TTS pipeline itself fixes VAD minimum speech ratio at `0.1` and VAD model
 threshold at `0.5`; `--vad-threshold` is not forwarded in TTS mode.
