@@ -36,7 +36,6 @@ training framework can consume. The detailed component contracts live in
 - Supports sequential execution and multi-worker local execution.
 - Discovers WAV, FLAC, and other requested extensions through `fsspec` globs.
 - Processed LibriSpeech dev-clean (5.39 h, 2,703 clips) at 6.3 RTFx with one worker.
-- Uses Ruff in the declared development tooling.
 
 ## Requirements
 
@@ -52,21 +51,19 @@ safely; on other platforms it uses process workers.
 
 ## Installation
 
-Install the source checkout:
+```bash
+pip install audiotrove
+```
+
+For development:
 
 ```bash
 git clone https://github.com/onepizzateam/AudioTrove.git
 cd AudioTrove
-python -m pip install -e .
+pip install -e ".[dev]"
 ```
 
-Install development tooling when running tests or lint:
-
-```bash
-python -m pip install -e ".[dev]"
-```
-
-Verify that the command is available:
+Verify the CLI is available:
 
 ```bash
 audiotrove --version
