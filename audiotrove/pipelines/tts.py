@@ -18,8 +18,8 @@ def tts_pipeline(
     max_duration: float = 15.0,
     snr_min: float = 20.0,
     padding_ms: int = 150,
-    export_format: list[str] = ["ljspeech", "f5tts"],
-    extensions: list[str] = ["wav"],
+    export_format: list[str] | None = None,
+    extensions: list[str] | None = None,
     workers: int = 1,
 ) -> dict:
     """Curate audio files and export TTS-ready training manifests.
@@ -38,6 +38,11 @@ def tts_pipeline(
     Returns:
         Summary with kept, filtered, total_duration_seconds, and output_files.
     """
+    if export_format is None:
+        export_format = ["ljspeech", "f5tts"]
+    if extensions is None:
+        extensions = ["wav"]
+
     input_file = Path(input_path)
     output_dir = Path(output_path)
     output_dir.mkdir(parents=True, exist_ok=True)
