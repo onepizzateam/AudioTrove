@@ -1,5 +1,4 @@
 import pytest
-from abc import ABC, abstractmethod
 from audiotrove.base import AudioFilter, AudioTransformer
 
 

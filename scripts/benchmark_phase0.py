@@ -14,7 +14,6 @@ from audiotrove.document import AudioDocument
 from audiotrove.executor.local import LocalExecutor
 from audiotrove.filters.snr import SNRFilter
 from audiotrove.filters.vad import SileroVADFilter
-from audiotrove.io.readers import LocalAudioReader
 from audiotrove.io.writers import JSONLWriter
 from audiotrove.utils.hashing import make_doc_id
 
@@ -62,7 +61,7 @@ def benchmark_reader(input_dir: Path, num_files: int):
     count = 0
     for f in files:
         with _wave.open(str(f), "rb") as wf:
-            frames = wf.getnframes()
+            wf.getnframes()
         count += 1
         if count >= num_files:
             break
@@ -172,11 +171,11 @@ if __name__ == "__main__":
 
     # Configuration
     num_test_files = 100
-    print(f"Phase 0 Performance Benchmark")
-    print(f"=" * 60)
+    print("Phase 0 Performance Benchmark")
+    print("=" * 60)
     print(f"Test files: {num_test_files}")
-    print(f"Audio duration: 5 seconds per file")
-    print(f"Sample rate: 16000 Hz")
+    print("Audio duration: 5 seconds per file")
+    print("Sample rate: 16000 Hz")
     print()
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -204,7 +203,7 @@ if __name__ == "__main__":
         print(f"  Time: {elapsed:.2f}s")
         print(f"  Throughput: {throughput:.1f} files/sec")
         print(
-            f"  Target: > 500 files/sec ✓"
+            "  Target: > 500 files/sec ✓"
             if throughput > 500
             else f"  Target: > 500 files/sec ✗ (got {throughput:.1f})"
         )
@@ -217,7 +216,7 @@ if __name__ == "__main__":
         print(f"  Time: {vad_elapsed:.2f}s")
         print(f"  Throughput: {vad_throughput:.1f} clips/sec")
         print(
-            f"  Target: > 10 clips/sec ✓"
+            "  Target: > 10 clips/sec ✓"
             if vad_throughput > 10
             else f"  Target: > 10 clips/sec ✗ (got {vad_throughput:.1f})"
         )
@@ -230,7 +229,7 @@ if __name__ == "__main__":
         print(f"  Time: {snr_elapsed:.2f}s")
         print(f"  Throughput: {snr_throughput:.1f} clips/sec")
         print(
-            f"  Target: > 200 clips/sec ✓"
+            "  Target: > 200 clips/sec ✓"
             if snr_throughput > 200
             else f"  Target: > 200 clips/sec ✗ (got {snr_throughput:.1f})"
         )
@@ -247,7 +246,7 @@ if __name__ == "__main__":
             print(f"  Time: {e2e_elapsed:.2f}s")
             print(f"  Throughput: {e2e_throughput:.1f} clips/sec")
             print(
-                f"  Target: > 8 clips/sec ✓"
+                "  Target: > 8 clips/sec ✓"
                 if e2e_throughput > 8
                 else f"  Target: > 8 clips/sec ✗ (got {e2e_throughput:.1f})"
             )

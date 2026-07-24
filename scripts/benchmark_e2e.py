@@ -79,7 +79,8 @@ def run():
     from audiotrove.filters.vad import SileroVADFilter
     from audiotrove.filters.snr import SNRFilter
     from audiotrove.executor.local import LocalExecutor
-    import platform, os
+    import platform
+    import os
 
     results = {
         "system": {
@@ -130,9 +131,9 @@ def run():
             total_audio_s = 0.0
             if (tmp / "manifest.jsonl").exists():
                 total_audio_s = sum(
-                    float(json.loads(l)["duration_seconds"])
-                    for l in (tmp / "manifest.jsonl").read_text().splitlines()
-                    if l.strip()
+                    float(json.loads(line)["duration_seconds"])
+                    for line in (tmp / "manifest.jsonl").read_text().splitlines()
+                    if line.strip()
                 )
 
             rtf = total_audio_s / elapsed if elapsed > 0 else 0  # real-time factor

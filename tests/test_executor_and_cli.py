@@ -1,11 +1,7 @@
 import sqlite3
-from pathlib import Path
-import tempfile
-import sqlite3
-import click
 from click.testing import CliRunner
-import pytest
 
+from audiotrove.base import AudioFanOutTransformer
 from audiotrove.document import AudioDocument
 from audiotrove.cli import main as cli
 
@@ -34,9 +30,6 @@ class DummyTransformer:
             raise RuntimeError("transform-error")
         # return same doc
         return doc
-
-
-from audiotrove.base import AudioFanOutTransformer
 
 
 class DummyFanOut(AudioFanOutTransformer):

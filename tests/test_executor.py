@@ -1,8 +1,5 @@
 """Tests for LocalExecutor."""
 
-import pytest
-from pathlib import Path
-import tempfile
 from audiotrove.executor.local import LocalExecutor
 from audiotrove.base import AudioFilter
 from audiotrove.document import AudioDocument

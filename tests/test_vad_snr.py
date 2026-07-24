@@ -41,7 +41,7 @@ def test_silero_filter_energy_fallback(monkeypatch):
     monkeypatch.setattr(vad_mod, "HAS_TORCH", False)
     f = SileroVADFilter(min_speech_ratio=0.0, window_size_samples=128)
     doc = _make_doc_with_audio(1600, peaks=[(0, 200)])
-    kept = f.filter(doc)
+    f.filter(doc)
     assert "vad_backend" in doc.metadata
     assert doc.metadata["vad_backend"] == "energy_fallback"
 
@@ -107,7 +107,7 @@ def test_silero_vad_path(monkeypatch):
 
     f._utils = Utils()
     doc = _make_doc_with_audio(1600, peaks=[(0, 200)])
-    kept = f.filter(doc)
+    f.filter(doc)
     assert doc.metadata["vad_backend"] == "silero"
     assert doc.metadata["vad_speech_timestamps"]
 

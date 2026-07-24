@@ -1,6 +1,5 @@
 """Tests for SNRFilter."""
 
-import pytest
 import numpy as np
 from audiotrove.filters.snr import SNRFilter
 from audiotrove.filters.vad import SileroVADFilter

@@ -1,6 +1,5 @@
 """Tests for VAD Segmentation (AudioFanOutTransformer)."""
 
-import pytest
 import numpy as np
 from audiotrove.filters.vad import VADSegmenter
 from audiotrove.document import AudioDocument
@@ -12,7 +11,7 @@ def test_vad_segmenter_basic():
     # Create a simple 10-second fixture: 5s speech + 5s silence
     sr = 16000
     duration = 10
-    samples = sr * duration
+    sr * duration
 
     # 0-5s: speech-like (sine wave)
     speech_part = 0.3 * np.sin(2 * np.pi * 300 * np.arange(sr * 5) / sr)

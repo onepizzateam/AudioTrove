@@ -12,8 +12,6 @@ from click.testing import CliRunner
 
 from audiotrove import __version__
 from audiotrove.cli.main import cli
-from audiotrove.document import AudioDocument
-from audiotrove.utils.hashing import make_doc_id
 
 
 def test_version_attribute():
@@ -246,11 +244,9 @@ def test_curate_filter_parameters():
 def test_curate_multi_format():
     """Test curate with --extensions wav to pick up multiple formats."""
     try:
-        import torchaudio
-        import torch
         from scipy.io import wavfile
     except ImportError:
-        pytest.skip("torchaudio or scipy not available")
+        pytest.skip("scipy not available")
 
     runner = CliRunner()
 

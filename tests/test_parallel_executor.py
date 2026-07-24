@@ -1,4 +1,4 @@
-from audiotrove.executor.local import LocalExecutor, _worker_process_doc
+from audiotrove.executor.local import LocalExecutor
 from audiotrove.document import AudioDocument
 import numpy as np
 import sqlite3

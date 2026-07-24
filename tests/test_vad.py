@@ -1,6 +1,5 @@
 """Tests for SileroVADFilter."""
 
-import pytest
 from audiotrove.filters.vad import SileroVADFilter
 
 

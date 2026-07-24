@@ -9,13 +9,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from audiotrove.executor.local import LocalExecutor
-from audiotrove.exporters.tts_manifest import TTSManifestExporter
-from audiotrove.filters.duration import DurationBucketFilter
-from audiotrove.filters.snr import SNRFilter
-from audiotrove.filters.vad import SileroVADFilter
-from audiotrove.io.readers import LocalAudioReader
-from audiotrove.transformers.silence_trim import SilenceTrimmingTransformer
+from audiotrove.executor.local import LocalExecutor  # noqa: E402
+from audiotrove.exporters.tts_manifest import TTSManifestExporter  # noqa: E402
+from audiotrove.filters.duration import DurationBucketFilter  # noqa: E402
+from audiotrove.filters.snr import SNRFilter  # noqa: E402
+from audiotrove.filters.vad import SileroVADFilter  # noqa: E402
+from audiotrove.io.readers import LocalAudioReader  # noqa: E402
+from audiotrove.transformers.silence_trim import SilenceTrimmingTransformer  # noqa: E402
 
 files = sorted(str(p) for p in Path("benchmarks/LibriSpeech/dev-clean").rglob("*.flac"))
 out = "benchmarks/tts_out_w1"

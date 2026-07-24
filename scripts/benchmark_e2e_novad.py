@@ -2,10 +2,19 @@
 Simplified benchmark: no VAD/SNR, just read and write manifests to measure throughput.
 """
 
-import time, json, tempfile
-from pathlib import Path
 import argparse
+import json
 import os
+import tempfile
+import time
+from pathlib import Path
+
+import platform
+
+from audiotrove.document import AudioDocument
+from audiotrove.executor.local import LocalExecutor
+from audiotrove.io.writers import JSONLWriter
+from audiotrove.utils.hashing import make_doc_id
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--corpus-dir", default="/tmp/LibriSpeech_wav")
@@ -22,12 +31,6 @@ if not wav_files:
 
 print("Simplified benchmark on", CORPUS_DIR, "ext", EXT)
 print("files:", len(wav_files))
-
-from audiotrove.executor.local import LocalExecutor
-from audiotrove.io.writers import JSONLWriter
-from audiotrove.document import AudioDocument
-from audiotrove.utils.hashing import make_doc_id
-
 
 def gen_from_dir(fixtures_dir: Path):
     import wave as _wave
@@ -56,8 +59,6 @@ def gen_from_dir(fixtures_dir: Path):
 
     return g
 
-
-import platform
 
 results = {
     "system": {

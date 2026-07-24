@@ -1,4 +1,3 @@
-import json
 import wave
 import numpy as np
 from audiotrove.document import AudioDocument
@@ -75,7 +74,7 @@ def test_reader_downmixes_stereo_real(fixtures_dir):
 
     f = fixtures_dir / "stereo.wav"
     with _wave.open(str(f), "rb") as wf:
-        sr = wf.getframerate()
+        wf.getframerate()
         nch = wf.getnchannels()
         frames = wf.readframes(wf.getnframes())
     audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32767.0
