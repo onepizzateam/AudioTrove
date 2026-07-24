@@ -108,9 +108,9 @@ def _preload_silero_model() -> None:
 
         v = SileroVADFilter()
         _ = v.model  # access to force lazy load
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         # If loading fails, proceed without raising — worker will fallback to energy VAD
-        pass
+        logger.debug("Silero VAD preload failed; workers will fallback to energy VAD")
 
 
 def _worker_init(preload_silero: bool) -> None:

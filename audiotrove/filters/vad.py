@@ -117,13 +117,11 @@ class SileroVADFilter(AudioFilter):
             return []
 
         timestamps = []
-        idx = 0
-        for flag in speech_frames:
+        for idx, flag in enumerate(speech_frames):
             start = idx * frame
             end = min(len(audio), (idx + 1) * frame)
             if flag:
                 timestamps.append({"start": start, "end": end})
-            idx += 1
         return timestamps
 
     def filter(self, doc: AudioDocument) -> bool:
