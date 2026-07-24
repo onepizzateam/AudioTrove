@@ -44,7 +44,7 @@ embed-dedup = ["faiss-cpu>=1.7.4", "speechbrain>=1.0.0"]
 dev = [
     "pytest",
     "pytest-cov",
-    "ruff",
+    "ruff==0.15.22",
     "mypy",
     "click[testing]",
     "scipy>=1.10.0",
