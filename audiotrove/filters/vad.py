@@ -325,6 +325,12 @@ class VADSegmenter(AudioFanOutTransformer):
 
         timestamps, backend_used = self._get_speech_timestamps(audio, sr)
 
+        logger.debug(
+            "VADSegmenter produced %d timestamp(s) for %s via %s",
+            len(timestamps),
+            doc.source_path,
+            backend_used,
+        )
         if not timestamps:
             # No speech detected, return empty list
             return []

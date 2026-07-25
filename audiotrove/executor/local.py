@@ -46,18 +46,20 @@ def _worker_process_doc(doc, pipeline):
 
             # Filters return bool
             if hasattr(block, "filter") and not isinstance(block, AudioFanOutTransformer):
+                filter_error = False
                 for d in docs:
                     try:
-                        keep = block.filter(d)
-                        if keep:
+                        if block.filter(d):
                             new_docs.append(d)
                     except Exception as e:  # noqa: BLE001
                         block_name = getattr(block, "name", block.__class__.__name__)
                         error = f"{block_name}: {e}"
                         error_block = block_name
+                        filter_error = True
                         keep = False
                         break
-                if not keep:
+                if filter_error or not new_docs:
+                    keep = False
                     break
                 docs = new_docs
 
@@ -217,10 +219,10 @@ class LocalExecutor:
 
                 # Filters return bool
                 if hasattr(block, "filter") and not isinstance(block, AudioFanOutTransformer):
+                    filter_error = False
                     for d in docs:
                         try:
-                            keep = block.filter(d)
-                            if keep:
+                            if block.filter(d):
                                 new_docs.append(d)
                         except Exception:  # noqa: BLE001
                             block_name = getattr(block, "name", block.__class__.__name__)
@@ -231,9 +233,11 @@ class LocalExecutor:
                             if block_name not in stats["errors_by_filter"]:
                                 stats["errors_by_filter"][block_name] = 0
                             stats["errors_by_filter"][block_name] += 1
+                            filter_error = True
                             keep = False
                             break
-                    if not keep:
+                    if filter_error or not new_docs:
+                        keep = False
                         break
                     docs = new_docs
 

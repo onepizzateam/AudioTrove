@@ -54,7 +54,10 @@ class TTSManifestExporter:
         """Append one audio document to each requested manifest."""
         transcription = str(doc.metadata.get("transcription", ""))
         self.total_duration_seconds += doc.duration_seconds
-        audio_path = self.output_dir / f"{Path(doc.source_path).stem}.wav"
+        stem = Path(doc.source_path).stem
+        if "parent_doc_id" in doc.metadata:
+            stem = f"{stem}_{doc.doc_id}"
+        audio_path = self.output_dir / f"{stem}.wav"
         sf.write(audio_path, doc.audio, doc.sample_rate)
         if "ljspeech" in self.export_format:
             filename = audio_path.name

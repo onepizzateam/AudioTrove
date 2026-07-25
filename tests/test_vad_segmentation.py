@@ -243,3 +243,53 @@ def test_vad_segmenter_with_executor():
     # All written docs should be segments
     for written_doc in writer.written:
         assert "parent_doc_id" in written_doc.metadata
+
+
+def test_executor_keeps_passing_fanout_documents_when_later_one_fails():
+    """A rejected fan-out child must not discard earlier accepted children."""
+    from audiotrove.base import AudioFanOutTransformer, AudioFilter
+    from audiotrove.executor.local import LocalExecutor
+
+    class FanOut(AudioFanOutTransformer):
+        name = "fan_out"
+
+        def transform(self, document):
+            return [
+                AudioDocument(
+                    audio=document.audio,
+                    sample_rate=document.sample_rate,
+                    source_path=document.source_path,
+                    duration_seconds=document.duration_seconds,
+                    doc_id=f"{document.doc_id}-{index}",
+                )
+                for index in range(3)
+            ]
+
+    class RejectLast(AudioFilter):
+        name = "reject_last"
+
+        def filter(self, document):
+            return not document.doc_id.endswith("-2")
+
+    class Reader:
+        def __iter__(self):
+            yield AudioDocument(
+                audio=np.ones(16, dtype=np.float32),
+                sample_rate=16,
+                source_path="fanout.wav",
+                duration_seconds=1.0,
+                doc_id="parent",
+            )
+
+    class Writer:
+        def __init__(self):
+            self.written = []
+
+        def write(self, document):
+            self.written.append(document)
+
+    writer = Writer()
+    stats = LocalExecutor([FanOut(), RejectLast()], num_workers=1).run(Reader(), writer)
+
+    assert stats["kept"] == 2
+    assert [document.doc_id for document in writer.written] == ["parent-0", "parent-1"]

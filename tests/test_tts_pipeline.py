@@ -84,6 +84,28 @@ def test_tts_manifest_exporter_writes_ljspeech_and_f5tts(tmp_path, speech_clean,
     assert filelist_lines[1].endswith("\t")
 
 
+def test_tts_manifest_exporter_gives_fanout_segments_unique_wav_paths(tmp_path):
+    """Fan-out documents from one source file must not overwrite each other."""
+    exporter = TTSManifestExporter(str(tmp_path))
+    documents = [
+        AudioDocument(
+            audio=np.ones(16000, dtype=np.float32),
+            sample_rate=16000,
+            source_path="chapter.mp3",
+            duration_seconds=1.0,
+            doc_id=f"segment-{index}",
+            metadata={"parent_doc_id": "chapter"},
+        )
+        for index in range(2)
+    ]
+
+    exporter.export(documents)
+
+    wav_paths = [line.split("\t", 1)[0] for line in (tmp_path / "filelist.txt").read_text().splitlines()]
+    assert len(set(wav_paths)) == 2
+    assert all(Path(path).exists() for path in wav_paths)
+
+
 def test_tts_pipeline_runs_end_to_end_on_fixtures(tmp_path, fixtures_dir):
     """The default TTS pipeline produces at least one curated fixture."""
     summary = tts_pipeline(str(fixtures_dir), str(tmp_path), snr_min=0.0, workers=1)
