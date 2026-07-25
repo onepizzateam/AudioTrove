@@ -5,4 +5,4 @@ TTS curation pipeline complete
   Output: sherlock-curated\metadata.csv
   Output: sherlock-curated\filelist.txt
 
-WALL_TIME_SECONDS=58.83
+WALL_TIME_SECONDS=45.29

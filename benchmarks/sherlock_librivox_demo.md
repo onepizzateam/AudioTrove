@@ -15,7 +15,7 @@ The AudioTrove way is one resumable command:
 
 ```bash
 pip install audiotrove
-audiotrove --verbose curate ./sherlock ./curated --tts --extensions mp3 --workers 4
+audiotrove --verbose curate ./sherlock ./curated --tts --segment --extensions mp3 --workers 4
 ```
 
 ## Source material
@@ -43,8 +43,8 @@ not the full eleven-hour audiobook.
 | Output clips | 1 WAV segment |
 | Curated duration | 0.00h (9.508s) |
 | Avg clip duration | 9.5s |
-| Wall time (4 workers) | 60.69s |
-| Resume time (checkpoint intact) | 58.83s |
+| Wall time (4 workers) | 48.57s |
+| Resume time (checkpoint intact) | 45.29s |
 | First-run filter result | 1 kept, 0 filtered |
 | Output formats | LJSpeech `metadata.csv` + F5-TTS `filelist.txt` |
 
@@ -56,11 +56,12 @@ while the original pass reports the actual curation result.
 
 ## What AudioTrove did to the clip
 
-The TTS pipeline applies real Silero VAD first, then trims silence while keeping
-the configured padding, scores the remaining audio with the SNR filter, checks
-the final duration bucket, and exports the accepted document. The excerpt had
-speech detected, passed the 20 dB SNR threshold, and finished at 9.508 seconds,
-inside the requested 2–15 second duration range.
+With `--segment`, the TTS pipeline uses real Silero VAD to fan out speech
+regions into candidate clips. It then applies per-segment VAD and silence
+trimming, scores the remaining audio with the SNR filter, checks the final
+duration bucket, and exports accepted documents. The excerpt had speech
+detected, passed the 20 dB SNR threshold, and finished at 9.508 seconds, inside
+the requested 2–15 second duration range.
 
 The input recording does not include a transcript. Consequently the generated
 manifest has an empty transcription field; AudioTrove does not invent text or
@@ -72,8 +73,8 @@ The exact command was run a second time with the same output directory and its
 SQLite checkpoint intact:
 
 ```
-First run:  60.69s for 1 kept clip
-Resume run: 58.83s; the processed document was skipped by checkpoint state
+First run:  48.57s for 1 kept clip
+Resume run: 45.29s; the processed document was skipped by checkpoint state
 ```
 
 The checkpoint lives at `sherlock-curated/checkpoint.db`. It makes the run
@@ -133,7 +134,7 @@ ia download adventures_sherlockholmes_1007_librivox --glob="*.mp3" --destdir ./s
 
 cd audiotrove
 audiotrove --verbose curate ./sherlock ./curated \
-  --tts --extensions mp3 --workers 4 \
+  --tts --segment --extensions mp3 --workers 4 \
   --tts-min-duration 2 --tts-max-duration 15 --tts-snr-min 20
 ```
 

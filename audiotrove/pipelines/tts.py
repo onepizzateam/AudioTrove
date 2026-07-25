@@ -6,7 +6,7 @@ from audiotrove.executor.local import LocalExecutor
 from audiotrove.exporters.tts_manifest import TTSManifestExporter
 from audiotrove.filters.duration import DurationBucketFilter
 from audiotrove.filters.snr import SNRFilter
-from audiotrove.filters.vad import SileroVADFilter
+from audiotrove.filters.vad import SileroVADFilter, VADSegmenter
 from audiotrove.io.readers import LocalAudioReader
 from audiotrove.transformers.silence_trim import SilenceTrimmingTransformer
 
@@ -21,6 +21,7 @@ def tts_pipeline(
     export_format: list[str] | None = None,
     extensions: list[str] | None = None,
     workers: int = 1,
+    segment: bool = False,
 ) -> dict:
     """Curate audio files and export TTS-ready training manifests.
 
@@ -34,6 +35,7 @@ def tts_pipeline(
         export_format: Requested manifest formats: ``ljspeech`` and/or ``f5tts``.
         extensions: Audio file extensions to read from a directory.
         workers: Number of local worker processes.
+        segment: Split detected speech regions into separate clip documents.
 
     Returns:
         Summary with kept, filtered, total_duration_seconds, and output_files.
@@ -54,6 +56,7 @@ def tts_pipeline(
     reader = LocalAudioReader(patterns, min_duration_seconds=0.0, max_duration_seconds=None)
     exporter = TTSManifestExporter(str(output_dir), export_format=export_format)
     pipeline = [
+        *([VADSegmenter()] if segment else []),
         SileroVADFilter(min_speech_ratio=0.1),
         SilenceTrimmingTransformer(padding_ms=padding_ms),
         SNRFilter(min_snr_db=snr_min),

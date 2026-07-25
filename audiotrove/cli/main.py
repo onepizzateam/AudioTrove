@@ -143,6 +143,7 @@ def curate(
             snr_min=tts_snr_min,
             extensions=[extension.strip().lower() for extension in extensions.split(",")],
             workers=workers,
+            segment=segment,
         )
         console.print("[cyan]TTS curation pipeline complete[/cyan]")
         console.print(f"  Kept: {summary['kept']}")

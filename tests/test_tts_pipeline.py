@@ -8,6 +8,7 @@ import soundfile as sf
 from audiotrove.document import AudioDocument
 from audiotrove.exporters.tts_manifest import TTSManifestExporter
 from audiotrove.filters.duration import DurationBucketFilter
+from audiotrove.filters.vad import VADSegmenter
 from audiotrove.pipelines.tts import tts_pipeline
 from audiotrove.transformers.silence_trim import SilenceTrimmingTransformer
 
@@ -106,6 +107,24 @@ def test_tts_pipeline_reads_requested_flac_extensions(tmp_path):
     )
 
     assert summary["kept"] + summary["filtered"] > 0
+
+
+def test_tts_pipeline_adds_vad_segmenter_when_requested(tmp_path, monkeypatch):
+    """TTS segmentation is opt-in and uses the VAD fan-out transformer."""
+    captured = {}
+
+    class FakeExecutor:
+        def __init__(self, pipeline, **_kwargs):
+            captured["pipeline"] = pipeline
+
+        def run(self, _reader, _exporter):
+            return {"kept": 0, "skipped": 0}
+
+    monkeypatch.setattr("audiotrove.pipelines.tts.LocalExecutor", FakeExecutor)
+
+    tts_pipeline(str(tmp_path), str(tmp_path / "output"), segment=True)
+
+    assert any(isinstance(block, VADSegmenter) for block in captured["pipeline"])
 
 
 def test_vad_remote_call_has_trust_repo():
