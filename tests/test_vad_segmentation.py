@@ -292,4 +292,5 @@ def test_executor_keeps_passing_fanout_documents_when_later_one_fails():
     stats = LocalExecutor([FanOut(), RejectLast()], num_workers=1).run(Reader(), writer)
 
     assert stats["kept"] == 2
+    assert stats["skipped"] == 1
     assert [document.doc_id for document in writer.written] == ["parent-0", "parent-1"]

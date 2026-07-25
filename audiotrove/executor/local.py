@@ -33,6 +33,7 @@ def _worker_process_doc(doc, pipeline):
     keep = True
     error = None
     error_block = None
+    rejected = 0
 
     try:
         # Windows workers receive a freshly unpickled pipeline. Load the model
@@ -58,10 +59,11 @@ def _worker_process_doc(doc, pipeline):
                         filter_error = True
                         keep = False
                         break
-                if filter_error or not new_docs:
+                rejected += len(docs) - len(new_docs)
+                docs = new_docs
+                if filter_error or not docs:
                     keep = False
                     break
-                docs = new_docs
 
             # Fan-out transformers can emit multiple docs
             elif isinstance(block, AudioFanOutTransformer):
@@ -99,7 +101,7 @@ def _worker_process_doc(doc, pipeline):
         error = str(e)
         keep = False
 
-    return (docs, keep, error, error_block)
+    return (docs, keep, error, error_block, rejected)
 
 
 def _preload_silero_model() -> None:
@@ -212,6 +214,7 @@ class LocalExecutor:
             docs = [doc]
             keep = True
             error = None
+            rejected = 0
 
             # Apply filters/transformers in pipeline order
             for block in self.pipeline:
@@ -236,10 +239,11 @@ class LocalExecutor:
                             filter_error = True
                             keep = False
                             break
-                    if filter_error or not new_docs:
+                    rejected += len(docs) - len(new_docs)
+                    docs = new_docs
+                    if filter_error or not docs:
                         keep = False
                         break
-                    docs = new_docs
 
                 # Fan-out transformers can emit multiple docs
                 elif isinstance(block, AudioFanOutTransformer):
@@ -284,14 +288,17 @@ class LocalExecutor:
                     docs = new_docs
 
             stats["processed"] += 1
+            stats["skipped"] += rejected
             if keep and docs and not error:
                 for d in docs:
                     writer.write(d)
                     self._mark_processed(d.doc_id)
                 stats["kept"] += len(docs)
-            else:
-                stats["skipped"] += len(docs)
-                # Mark original doc as processed even if expanded/filtered to nothing
+            elif not rejected:
+                stats["skipped"] += len(docs) or 1
+            if not error:
+                # The reader only sees source documents; checkpoint the source
+                # as well as accepted fan-out children so a resumed run skips it.
                 self._mark_processed(doc.doc_id)
 
         return stats
@@ -354,9 +361,10 @@ class LocalExecutor:
             # Process results as they complete (main process handles writes)
             for future in as_completed(future_to_doc):
                 try:
-                    docs, keep, error, error_block = future.result()
+                    docs, keep, error, error_block, rejected = future.result()
 
                     stats["processed"] += 1
+                    stats["skipped"] += rejected
 
                     if error:
                         for doc in docs:
@@ -372,11 +380,13 @@ class LocalExecutor:
                             writer.write(doc)
                             self._mark_processed(doc.doc_id)
                         stats["kept"] += len(docs)
-                    else:
-                        stats["skipped"] += len(docs)
-                        # Mark original doc as processed
-                        for doc in docs:
-                            self._mark_processed(doc.doc_id)
+                    elif not rejected:
+                        stats["skipped"] += len(docs) or 1
+
+                    if not error:
+                        # Fan-out children are not reader inputs. Persist the
+                        # original source ID so a resume skips the whole input.
+                        self._mark_processed(future_to_doc[future].doc_id)
 
                 except Exception:  # noqa: BLE001
                     logger.exception("Worker task failed")
