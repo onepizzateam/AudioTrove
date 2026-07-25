@@ -1,0 +1,8 @@
+TTS curation pipeline complete
+  Kept: 0
+  Filtered: 1
+  Duration: 0.00s
+  Output: sherlock-curated\metadata.csv
+  Output: sherlock-curated\filelist.txt
+
+WALL_TIME_SECONDS=58.83
