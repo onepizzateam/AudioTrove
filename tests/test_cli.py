@@ -186,6 +186,24 @@ def test_curate_workers_parameter():
         assert result.exit_code in [0, 1]
 
 
+def test_curate_rejects_non_positive_worker_count():
+    """Click rejects invalid worker counts before executor construction."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["curate", "input", "output", "--workers", "0"])
+
+    assert result.exit_code == 2
+    assert "0 is not in the range" in result.output
+
+
+def test_curate_rejects_out_of_range_vad_threshold():
+    """Click rejects speech ratios outside the documented range."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["curate", "input", "output", "--vad-threshold", "2"])
+
+    assert result.exit_code == 2
+    assert "2.0 is not in the range" in result.output
+
+
 def test_curate_checkpoint_parameter():
     """Test curate --checkpoint parameter is accepted."""
     runner = CliRunner()

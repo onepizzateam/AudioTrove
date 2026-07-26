@@ -149,6 +149,25 @@ def test_tts_pipeline_adds_vad_segmenter_when_requested(tmp_path, monkeypatch):
     assert any(isinstance(block, VADSegmenter) for block in captured["pipeline"])
 
 
+def test_tts_pipeline_uses_requested_checkpoint_path(tmp_path, monkeypatch):
+    """A caller-provided checkpoint path overrides the output default."""
+    captured = {}
+
+    class FakeExecutor:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run(self, _reader, _exporter):
+            return {"kept": 0, "skipped": 0}
+
+    monkeypatch.setattr("audiotrove.pipelines.tts.LocalExecutor", FakeExecutor)
+    checkpoint = tmp_path / "custom.db"
+
+    tts_pipeline(str(tmp_path), str(tmp_path / "output"), checkpoint_path=str(checkpoint))
+
+    assert captured["checkpoint_path"] == str(checkpoint)
+
+
 def test_vad_remote_call_has_trust_repo():
     """Remote Silero loading must not require interactive trust confirmation."""
     src = Path("audiotrove/filters/vad.py").read_text(encoding="utf-8")

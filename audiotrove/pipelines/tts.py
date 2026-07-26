@@ -22,6 +22,7 @@ def tts_pipeline(
     extensions: list[str] | None = None,
     workers: int = 1,
     segment: bool = False,
+    checkpoint_path: str | None = None,
 ) -> dict:
     """Curate audio files and export TTS-ready training manifests.
 
@@ -36,6 +37,7 @@ def tts_pipeline(
         extensions: Audio file extensions to read from a directory.
         workers: Number of local worker processes.
         segment: Split detected speech regions into separate clip documents.
+        checkpoint_path: Optional SQLite checkpoint path for resumable runs.
 
     Returns:
         Summary with kept, filtered, total_duration_seconds, and output_files.
@@ -65,7 +67,7 @@ def tts_pipeline(
     ]
     executor = LocalExecutor(
         pipeline=pipeline,
-        checkpoint_path=str(output_dir / "checkpoint.db"),
+        checkpoint_path=checkpoint_path or str(output_dir / "checkpoint.db"),
         num_workers=workers,
     )
     stats = executor.run(reader, exporter)

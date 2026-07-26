@@ -28,7 +28,7 @@ def cli(verbose):
 @click.option(
     "--vad-threshold",
     default=0.3,
-    type=float,
+    type=click.FloatRange(0.0, 1.0),
     show_default=True,
     help="Generic JSONL-path minimum speech ratio (0-1); ignored with --tts.",
 )
@@ -51,7 +51,7 @@ def cli(verbose):
 @click.option(
     "--workers",
     default=1,
-    type=int,
+    type=click.IntRange(min=1),
     show_default=True,
     help="Number of worker processes for parallel execution.",
 )
@@ -120,7 +120,10 @@ def curate(
     from audiotrove.executor.local import LocalExecutor
 
     if enhance:
-        from audiotrove.filters.enhance import DeepFilterEnhancer
+        try:
+            from audiotrove.filters.enhance import DeepFilterEnhancer
+        except ImportError as exc:
+            raise click.ClickException(str(exc)) from exc
 
     # Validate paths
     input_p = Path(input_path)
@@ -144,6 +147,7 @@ def curate(
             extensions=[extension.strip().lower() for extension in extensions.split(",")],
             workers=workers,
             segment=segment,
+            checkpoint_path=checkpoint,
         )
         console.print("[cyan]TTS curation pipeline complete[/cyan]")
         console.print(f"  Kept: {summary['kept']}")
@@ -156,7 +160,10 @@ def curate(
     # Build pipeline
     pipeline = []
     if enhance:
-        pipeline.append(DeepFilterEnhancer())
+        try:
+            pipeline.append(DeepFilterEnhancer())
+        except ImportError as exc:
+            raise click.ClickException(str(exc)) from exc
     # Treat a vad_threshold of 0.0 as "no VAD filtering" (accept all audio).
     if vad_threshold > 0.0 and vad_threshold < 1.0:
         pipeline.append(SileroVADFilter(min_speech_ratio=vad_threshold))
@@ -224,7 +231,7 @@ def curate(
     table.add_row("Filtered", str(stats["skipped"]))
     console.print(table)
 
-    console.print(f"[green]✓ Manifest written to {output_manifest}[/green]")
+    console.print(f"[green]Manifest written to {output_manifest}[/green]")
 
 
 @cli.command()
