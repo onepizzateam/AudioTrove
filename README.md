@@ -145,9 +145,10 @@ and checkpoint mutation serial and resumable.
 
 ## CLI reference
 
-Use `audiotrove curate INPUT_PATH OUTPUT_PATH --tts`. TTS-specific options are
-listed first. The remaining flags belong to the generic JSONL path and are
-accepted by the same command but do not configure `tts_pipeline()`.
+Use `audiotrove curate INPUT_PATH OUTPUT_PATH --tts`. The TTS pipeline accepts
+the TTS-specific options below as well as `--segment`, `--workers`, and
+`--extensions`. The remaining generic JSONL flags are accepted by the same
+command but do not configure `tts_pipeline()`.
 
 **Global flag:** `--verbose` must come before the subcommand: `audiotrove --verbose curate ...`
 
@@ -159,12 +160,12 @@ accepted by the same command but do not configure `tts_pipeline()`.
 | `--tts-snr-min` | float | `20.0` | Minimum TTS SNR in dB. |
 | `--workers` | integer | `1` | Local worker count. |
 | `--extensions` | string | `wav` | Comma-separated extensions, for example `wav,mp3,flac`. |
-| `--vad-threshold` | float | `0.3` | Generic-path minimum speech ratio. |
+| `--vad-threshold` | float | `0.3` | Generic-path minimum speech ratio; ignored with `--tts`. |
 | `--snr-min` | float | `15.0` | Generic-path minimum SNR in dB. |
 | `--format` | choice | `jsonl` | Generic-path output format. |
 | `--checkpoint` | string | none | Generic-path checkpoint database path. |
-| `--segment` | flag | `False` | Generic-path VAD fan-out segmentation. |
-| `--enhance` | flag | `False` | Generic-path DeepFilterNet2 enhancement. |
+| `--segment` | flag | `False` | VAD fan-out segmentation in generic and TTS modes. In TTS mode, each accepted speech segment is exported to the manifests. |
+| `--enhance` | flag | `False` | Generic-path DeepFilterNet2 enhancement; ignored with `--tts`. |
 
 The TTS pipeline itself fixes VAD minimum speech ratio at `0.1` and VAD model
 threshold at `0.5`; `--vad-threshold` is not forwarded in TTS mode.

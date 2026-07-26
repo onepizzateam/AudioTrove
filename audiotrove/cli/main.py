@@ -30,7 +30,7 @@ def cli(verbose):
     default=0.3,
     type=float,
     show_default=True,
-    help="Minimum speech ratio (0-1) to keep a clip.",
+    help="Generic JSONL-path minimum speech ratio (0-1); ignored with --tts.",
 )
 @click.option(
     "--snr-min",
@@ -65,13 +65,13 @@ def cli(verbose):
     "--segment",
     is_flag=True,
     default=False,
-    help="Split audio into per-speech-segment sub-documents (VAD fan-out). Each speech segment becomes its own JSONL entry.",
+    help="Split audio into per-speech-segment documents (VAD fan-out); applies to JSONL and --tts modes.",
 )
 @click.option(
     "--enhance",
     is_flag=True,
     default=False,
-    help="Optional neural denoising via DeepFilterNet2 (requires pip install audiotrove[enhance]). Runs before VAD/SNR filtering.",
+    help="Generic JSONL-path DeepFilterNet2 enhancement; ignored with --tts (requires audiotrove[enhance]).",
 )
 @click.option(
     "--tts", is_flag=True, default=False, help="Run the TTS curation and manifest pipeline."
