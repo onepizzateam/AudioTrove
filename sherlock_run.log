@@ -1,9 +1,0 @@
-DEBUG:fsspec.local:open file: C:/Users/palak_uge27/sherlock/chapter01_excerpt10.mp3
-TTS curation pipeline complete
-  Kept: 1
-  Filtered: 0
-  Duration: 9.51s
-  Output: sherlock-curated\metadata.csv
-  Output: sherlock-curated\filelist.txt
-
-WALL_TIME_SECONDS=48.57
