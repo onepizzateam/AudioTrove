@@ -68,7 +68,7 @@ def test_worker_process_doc_filter_exception():
 
     doc = _make_doc()
     pipeline = [DummyFilter(raise_on=True)]
-    docs, keep, error, error_block = _worker_process_doc(doc, pipeline)
+    docs, keep, error, error_block, _ = _worker_process_doc(doc, pipeline)
     assert not keep
     assert error is not None
     assert "filter-error" in error
@@ -79,7 +79,7 @@ def test_worker_process_doc_fanout_and_transform():
 
     doc = _make_doc()
     pipeline = [DummyFanOut(), DummyTransformer()]
-    docs, keep, error, error_block = _worker_process_doc(doc, pipeline)
+    docs, keep, error, error_block, _ = _worker_process_doc(doc, pipeline)
     assert keep
     assert error is None
     assert isinstance(docs, list)
@@ -96,7 +96,7 @@ def test_worker_process_doc_transform_exception():
             raise RuntimeError("boom")
 
     doc = _make_doc()
-    docs, keep, error, error_block = _worker_process_doc(doc, [BadTransform()])
+    docs, keep, error, error_block, _ = _worker_process_doc(doc, [BadTransform()])
     assert not keep
     assert error_block == "bad_transform"
 
