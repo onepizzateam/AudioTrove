@@ -41,6 +41,7 @@ s3 = ["s3fs>=2023.1.0"]
 gcs = ["gcsfs>=2023.1.0"]
 diarize = ["pyannote.audio>=3.1.0"]
 embed-dedup = ["faiss-cpu>=1.7.4", "speechbrain>=1.0.0"]
+transcribe = ["openai-whisper>=20231117"]
 dev = [
     "pytest",
     "pytest-cov",

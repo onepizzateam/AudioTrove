@@ -93,6 +93,18 @@ def cli(verbose):
 @click.option(
     "--tts-snr-min", default=20.0, type=float, show_default=True, help="Minimum TTS SNR in dB."
 )
+@click.option(
+    "--tts-transcribe",
+    is_flag=True,
+    default=False,
+    help="Transcribe kept clips with Whisper (requires pip install audiotrove[transcribe]).",
+)
+@click.option(
+    "--tts-whisper-model",
+    default="base",
+    show_default=True,
+    help="Whisper model size: tiny, base, small, medium, large.",
+)
 def curate(
     input_path,
     output_path,
@@ -108,6 +120,8 @@ def curate(
     tts_min_duration,
     tts_max_duration,
     tts_snr_min,
+    tts_transcribe,
+    tts_whisper_model,
 ):
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
 
@@ -148,6 +162,8 @@ def curate(
             workers=workers,
             segment=segment,
             checkpoint_path=checkpoint,
+            transcribe=tts_transcribe,
+            whisper_model=tts_whisper_model,
         )
         console.print("[cyan]TTS curation pipeline complete[/cyan]")
         console.print(f"  Kept: {summary['kept']}")
