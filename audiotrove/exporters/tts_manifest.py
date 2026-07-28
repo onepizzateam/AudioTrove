@@ -1,10 +1,13 @@
 """TTS training manifest export."""
 
+import logging
 from pathlib import Path
 
 import soundfile as sf
 
 from audiotrove.document import AudioDocument
+
+logger = logging.getLogger(__name__)
 
 
 class TTSManifestExporter:
@@ -58,6 +61,12 @@ class TTSManifestExporter:
         if "parent_doc_id" in doc.metadata:
             stem = f"{stem}_{doc.doc_id}"
         audio_path = self.output_dir / f"{stem}.wav"
+        if audio_path.exists():
+            logger.warning(
+                "Stem collision: %s already exists and will be overwritten. "
+                "Rename source files with duplicate stems to avoid data loss.",
+                audio_path,
+            )
         sf.write(audio_path, doc.audio, doc.sample_rate)
         if "ljspeech" in self.export_format:
             filename = audio_path.name
