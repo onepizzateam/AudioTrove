@@ -1,7 +1,5 @@
 """Tests for SpeakerDiarizationTransformer."""
 
-from __future__ import annotations
-
 import pickle
 import types
 from unittest.mock import MagicMock, patch
