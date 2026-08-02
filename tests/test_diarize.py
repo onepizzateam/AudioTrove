@@ -18,6 +18,12 @@ from audiotrove.document import AudioDocument
 
 SR = 16000
 
+def _make_transformer(hf_token: str = "hf_test", **kwargs):
+    from audiotrove.transformers.diarize import SpeakerDiarizationTransformer  # move here
+    fake_pyannote = types.ModuleType("pyannote.audio")
+    fake_pyannote.Pipeline = MagicMock()
+    with patch.dict("sys.modules", {"pyannote": MagicMock(), "pyannote.audio": fake_pyannote}):
+        return SpeakerDiarizationTransformer(hf_token=hf_token, **kwargs)
 
 def _make_doc(duration: float = 4.0, doc_id: str = "test_doc") -> AudioDocument:
     """Return a synthetic AudioDocument for the given duration."""
