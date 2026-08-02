@@ -49,16 +49,6 @@ def _make_diarization_result(turns: list[tuple[float, float, str]]):
     ]
     return mock_diar
 
-
-def _make_transformer(hf_token: str = "hf_test", **kwargs):
-    """Construct SpeakerDiarizationTransformer with pyannote stubbed out."""
-    fake_pyannote = types.ModuleType("pyannote.audio")
-    fake_pyannote.Pipeline = MagicMock()
-    with patch.dict("sys.modules", {"pyannote": MagicMock(), "pyannote.audio": fake_pyannote}):
-        from audiotrove.transformers.diarize import SpeakerDiarizationTransformer
-        return SpeakerDiarizationTransformer(hf_token=hf_token, **kwargs)
-
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
