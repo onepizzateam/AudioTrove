@@ -80,10 +80,15 @@ class SpeakerDiarizationTransformer(AudioFanOutTransformer):
         """Restore state after unpickling; pipeline will reload on first use."""
         self.__dict__.update(state)
 
+    def _reconstruct_diarizer(cls, state):
+        obj = cls.__new__(cls)
+        obj.__setstate__(state)
+        return obj
+
     def __reduce__(self):
         return (
-            self.__class__,
-            (self.hf_token, self.model_name, self.min_speakers, self.max_speakers),
+            _reconstruct_diarizer,
+            (self.__class__, self.__getstate__()),
         )
 
     # ------------------------------------------------------------------
