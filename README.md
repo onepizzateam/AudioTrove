@@ -170,6 +170,10 @@ command but do not configure `tts_pipeline()`.
 | `--tts-snr-min` | float | `20.0` | Minimum TTS SNR in dB. |
 | `--tts-transcribe` | flag | `False` | Transcribe kept clips with Whisper (requires `pip install audiotrove[transcribe]`). |
 | `--tts-whisper-model` | str | `base` | Whisper model size: tiny, base, small, medium, large. |
+| `--tts-diarize` | flag | `False` | Run speaker diarization before VAD (requires `pip install audiotrove[diarize]`). |
+| `--tts-hf-token` | string | `None` | HuggingFace token for pyannote models (required when `--tts-diarize` is set). |
+| `--tts-diarize-min-speakers` | integer | `None` | Optional minimum speaker count for diarization. |
+| `--tts-diarize-max-speakers` | integer | `None` | Optional maximum speaker count for diarization. |
 | `--workers` | integer | `1` | Local worker count. |
 | `--extensions` | string | `wav` | Comma-separated extensions, for example `wav,mp3,flac`. |
 | `--vad-threshold` | float | `0.3` | Generic-path minimum speech ratio; ignored with `--tts`. |
@@ -181,6 +185,20 @@ command but do not configure `tts_pipeline()`.
 
 The TTS pipeline itself fixes VAD minimum speech ratio at `0.1` and VAD model
 threshold at `0.5`; `--vad-threshold` is not forwarded in TTS mode.
+
+### Speaker Diarization
+
+To perform multi-speaker segmentation using pyannote:
+
+1. Install the `diarize` extra: `pip install audiotrove[diarize]`
+2. Accept the model user agreement on HuggingFace for [pyannote/speaker-diarization-3.1](https://hf.co/pyannote/speaker-diarization-3.1).
+3. Pass your HuggingFace user access token using `--tts-hf-token`:
+
+```bash
+audiotrove curate ./raw-recordings ./curated-tts --tts \
+  --tts-diarize --tts-hf-token hf_xxx \
+  --tts-diarize-max-speakers 2
+```
 
 ## Output format
 

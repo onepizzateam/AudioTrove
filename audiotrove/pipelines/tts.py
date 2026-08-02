@@ -25,6 +25,10 @@ def tts_pipeline(
     checkpoint_path: str | None = None,
     transcribe: bool = False,
     whisper_model: str = "base",
+    diarize: bool = False,
+    hf_token: str | None = None,
+    diarize_min_speakers: int | None = None,
+    diarize_max_speakers: int | None = None,
 ) -> dict:
     """Curate audio files and export TTS-ready training manifests.
 
@@ -42,6 +46,10 @@ def tts_pipeline(
         checkpoint_path: Optional SQLite checkpoint path for resumable runs.
         transcribe: Transcribe kept clips with Whisper.
         whisper_model: Whisper model size to use when transcribing.
+        diarize: Run speaker diarization before VAD (requires audiotrove[diarize]).
+        hf_token: HuggingFace token required by pyannote models.
+        diarize_min_speakers: Optional lower bound passed to the diarization pipeline.
+        diarize_max_speakers: Optional upper bound passed to the diarization pipeline.
 
     Returns:
         Summary with kept, filtered, total_duration_seconds, and output_files.
@@ -66,12 +74,29 @@ def tts_pipeline(
         SilenceTrimmingTransformer(padding_ms=padding_ms),
         SNRFilter(min_snr_db=snr_min),
         DurationBucketFilter(min_duration, max_duration),
-        # TODO: add an optional speaker consistency filter when a lightweight backend is available.
+        # See issue #2: speaker consistency filter for TTS pipeline.
     ]
+    if diarize:
+        if not hf_token:
+            raise ValueError(
+                "diarize=True requires hf_token. "
+                "Accept the model licence at https://hf.co/pyannote/speaker-diarization-3.1 "
+                "and pass your HuggingFace token via hf_token."
+            )
+        from audiotrove.transformers.diarize import SpeakerDiarizationTransformer
+
+        pipeline.insert(
+            0,
+            SpeakerDiarizationTransformer(
+                hf_token=hf_token,
+                min_speakers=diarize_min_speakers,
+                max_speakers=diarize_max_speakers,
+            ),
+        )
     if transcribe:
         from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
 
-        pipeline.insert(3, WhisperTranscriber(model_name=whisper_model))
+        pipeline.append(WhisperTranscriber(model_name=whisper_model))
     executor = LocalExecutor(
         pipeline=pipeline,
         checkpoint_path=checkpoint_path or str(output_dir / "checkpoint.db"),

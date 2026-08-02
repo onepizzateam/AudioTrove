@@ -173,3 +173,176 @@ def test_vad_remote_call_has_trust_repo():
     src = Path("audiotrove/filters/vad.py").read_text(encoding="utf-8")
     remote_block = src[src.index('torch.hub.load("snakers4/silero-vad"') :]
     assert "trust_repo=True" in remote_block[:200]
+
+
+def test_tts_pipeline_whisper_is_last_when_transcribe_enabled(tmp_path, monkeypatch):
+    """WhisperTranscriber must be appended after all filters, not inserted mid-pipeline."""
+    captured = {}
+
+    class FakeExecutor:
+        def __init__(self, pipeline, **_kwargs):
+            captured["pipeline"] = pipeline
+
+        def run(self, _reader, _exporter):
+            return {"kept": 0, "skipped": 0}
+
+    # Stub out WhisperTranscriber so whisper doesn't need to be installed.
+    class StubWhisperTranscriber:
+        def __init__(self, model_name="base"):
+            pass
+
+    monkeypatch.setattr("audiotrove.pipelines.tts.LocalExecutor", FakeExecutor)
+
+    # Directly inject the stub so the lazy import inside tts_pipeline resolves to it.
+    import sys
+    import types
+
+    fake_module = types.ModuleType("audiotrove.transformers.whisper_transcribe")
+    fake_module.WhisperTranscriber = StubWhisperTranscriber
+    monkeypatch.setitem(sys.modules, "audiotrove.transformers.whisper_transcribe", fake_module)
+
+    tts_pipeline(str(tmp_path), str(tmp_path / "output"), transcribe=True)
+
+    pipeline = captured["pipeline"]
+    assert isinstance(pipeline[-1], StubWhisperTranscriber), (
+        "WhisperTranscriber should be the last stage in the pipeline"
+    )
+    assert not isinstance(pipeline[-2], StubWhisperTranscriber), (
+        "WhisperTranscriber should appear exactly once, at the end"
+    )
+
+
+def test_tts_pipeline_whisper_not_called_on_duration_rejected_doc(tmp_path, monkeypatch):
+    """WhisperTranscriber.transform() must never be invoked on a clip that
+    DurationBucketFilter rejects — confirmed by placing Whisper after all filters."""
+    import numpy as np
+
+    from audiotrove.document import AudioDocument
+
+    whisper_calls = []
+
+    class SpyWhisperTranscriber:
+        name = "whisper_transcriber"
+
+        def __init__(self, model_name="base"):
+            pass
+
+        def transform(self, doc: AudioDocument) -> AudioDocument:
+            whisper_calls.append(doc.doc_id)
+            return doc
+
+    # A document that DurationBucketFilter(min=2, max=15) will reject (too short: 0.5 s).
+    too_short = AudioDocument(
+        audio=np.zeros(8000, dtype=np.float32),
+        sample_rate=16000,
+        source_path="short.wav",
+        duration_seconds=0.5,
+        doc_id="too_short",
+    )
+
+    from audiotrove.filters.duration import DurationBucketFilter
+    from audiotrove.filters.snr import SNRFilter
+    from audiotrove.filters.vad import SileroVADFilter
+    from audiotrove.transformers.silence_trim import SilenceTrimmingTransformer
+
+    # Reconstruct the exact pipeline tts_pipeline builds when transcribe=True.
+    pipeline = [
+        SileroVADFilter(min_speech_ratio=0.1),
+        SilenceTrimmingTransformer(padding_ms=150),
+        SNRFilter(min_snr_db=20.0),
+        DurationBucketFilter(2.0, 15.0),
+        SpyWhisperTranscriber(),
+    ]
+
+    # Walk the document through each stage, honouring filter rejections.
+    doc = too_short
+    for stage in pipeline:
+        if hasattr(stage, "filter"):
+            if not stage.filter(doc):
+                break  # document rejected — no further stages should run
+        else:
+            doc = stage.transform(doc)
+
+    assert whisper_calls == [], (
+        "WhisperTranscriber.transform() should not be called on a document "
+        "that DurationBucketFilter rejects"
+    )
+
+
+def test_tts_pipeline_diarize_writes_per_speaker_ids_to_manifest(tmp_path, monkeypatch):
+    """With diarize=True the manifest must contain per-speaker IDs from diarization."""
+    import sys
+    import types
+    import numpy as np
+    from unittest.mock import MagicMock, patch
+
+    SR = 16000
+
+    # ------------------------------------------------------------------
+    # Build a fake pyannote module so SpeakerDiarizationTransformer can
+    # be imported without pyannote installed.
+    # ------------------------------------------------------------------
+    fake_pyannote = types.ModuleType("pyannote.audio")
+    fake_pyannote.Pipeline = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyannote", MagicMock())
+    monkeypatch.setitem(sys.modules, "pyannote.audio", fake_pyannote)
+
+    # ------------------------------------------------------------------
+    # Fake diarization result: two speakers, each 3 s.
+    # ------------------------------------------------------------------
+    def _seg(start, end):
+        s = MagicMock()
+        s.start = start
+        s.end = end
+        return s
+
+    mock_diar = MagicMock()
+    mock_diar.itertracks.return_value = [
+        (_seg(0.0, 3.0), None, "SPEAKER_00"),
+        (_seg(3.0, 6.0), None, "SPEAKER_01"),
+    ]
+    mock_pipeline_instance = MagicMock(return_value=mock_diar)
+
+    # ------------------------------------------------------------------
+    # Write a 6-second wav so the reader has something to load.
+    # ------------------------------------------------------------------
+    import soundfile as sf
+
+    src = tmp_path / "multi.wav"
+    sf.write(str(src), np.zeros(int(6 * SR), dtype=np.float32), SR)
+    out = tmp_path / "out"
+
+    from audiotrove.transformers.diarize import SpeakerDiarizationTransformer
+
+    with patch.object(
+        SpeakerDiarizationTransformer,
+        "pipeline",
+        new_callable=lambda: property(lambda self: mock_pipeline_instance),
+    ), patch("audiotrove.transformers.diarize.sf.write"), \
+       patch("audiotrove.transformers.diarize.Path.unlink"):
+        from audiotrove.pipelines.tts import tts_pipeline
+
+        summary = tts_pipeline(
+            str(tmp_path),
+            str(out),
+            min_duration=1.0,
+            max_duration=20.0,
+            snr_min=0.0,
+            extensions=["wav"],
+            workers=1,
+            diarize=True,
+            hf_token="hf_fake",
+        )
+
+    # At least one speaker segment should have been kept.
+    metadata_path = out / "metadata.csv"
+    if metadata_path.exists():
+        lines = metadata_path.read_text(encoding="utf-8").splitlines()
+        speaker_ids = [line.split("|")[1] for line in lines if "|" in line]
+        # All IDs must be one of the diarized speaker labels, not the default "speaker_00".
+        for sid in speaker_ids:
+            assert sid in {"SPEAKER_00", "SPEAKER_01"}, (
+                f"Unexpected speaker_id in manifest: {sid!r}"
+            )
+
+

@@ -56,6 +56,9 @@ class TTSManifestExporter:
     def write(self, doc: AudioDocument) -> None:
         """Append one audio document to each requested manifest."""
         transcription = str(doc.metadata.get("transcription", ""))
+        # Per-clip speaker_id takes precedence over the exporter-level default.
+        # This lets diarized clips carry their own speaker label automatically.
+        effective_speaker_id = doc.metadata.get("speaker_id", self.speaker_id)
         self.total_duration_seconds += doc.duration_seconds
         stem = Path(doc.source_path).stem
         if "parent_doc_id" in doc.metadata:
@@ -71,7 +74,7 @@ class TTSManifestExporter:
         if "ljspeech" in self.export_format:
             filename = audio_path.name
             with self.metadata_path.open("a", encoding="utf-8", newline="") as metadata_file:
-                metadata_file.write(f"{filename}|{self.speaker_id}|{transcription}\n")
+                metadata_file.write(f"{filename}|{effective_speaker_id}|{transcription}\n")
         if "f5tts" in self.export_format:
             with self.filelist_path.open("a", encoding="utf-8", newline="") as filelist_file:
                 filelist_file.write(f"{audio_path}\t{doc.duration_seconds:.4f}\t{transcription}\n")
