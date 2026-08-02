@@ -49,6 +49,7 @@ dev = [
     "mypy",
     "click[testing]",
     "scipy>=1.10.0",
+    "torchcodec",
 ]
 
 [project.urls]
