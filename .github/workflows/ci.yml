@@ -35,6 +35,8 @@ jobs:
         run: conda install -c conda-forge ffmpeg -y
       - name: Install Python dependencies
         run: pip install -e ".[dev]"
+      - name: Install diarize extras
+        run: pip install -e ".[diarize]"
       - name: Install torchcodec
         run: pip install torchcodec
       - name: Run tests
