@@ -18,11 +18,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-def _reconstruct_diarizer(cls, state):
-    obj = cls.__new__(cls)
-    obj.__setstate__(state)
-    return obj
-
 class SpeakerDiarizationTransformer(AudioFanOutTransformer):
     """Fan-out transformer that segments audio by speaker using pyannote.audio.
 
@@ -83,12 +78,6 @@ class SpeakerDiarizationTransformer(AudioFanOutTransformer):
     def __setstate__(self, state: dict) -> None:
         """Restore state after unpickling; pipeline will reload on first use."""
         self.__dict__.update(state)
-
-    def __reduce__(self):
-        return (
-            _reconstruct_diarizer,
-            (self.__class__, self.__getstate__()),
-        )
 
     # ------------------------------------------------------------------
     # Lazy pipeline property
