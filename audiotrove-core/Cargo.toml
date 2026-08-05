@@ -1,0 +1,15 @@
+[package]
+name = "audiotrove-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "audiotrove_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+symphonia = { version = "0.5", features = ["all"] }
+walkdir = "2"
+rayon = "1"

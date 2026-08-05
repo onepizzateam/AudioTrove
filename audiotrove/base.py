@@ -1,8 +1,14 @@
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
 from audiotrove.document import AudioDocument
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import torch
 
 
 class AudioFilter(ABC):
+
     @abstractmethod
     def filter(self, doc: AudioDocument) -> bool:
         pass
@@ -24,7 +30,39 @@ class AudioTransformer(ABC):
         pass
 
 
+class GPUFilter(AudioFilter):
+    """AudioFilter that receives a device and can operate on GPU tensors.
+
+    Subclasses run on a :class:`torch.device`. The default :meth:`to`
+    implementation is a no-op so simple GPU filters that keep no persistent
+    model state still satisfy the interface.
+    """
+
+    @property
+    @abstractmethod
+    def device(self) -> "torch.device":
+        """Return the device this filter currently operates on."""
+
+    def to(self, device: "torch.device") -> "GPUFilter":
+        """Move internal models to ``device``. Returns ``self``."""
+        return self
+
+
+class GPUTransformer(AudioTransformer):
+    """AudioTransformer that operates on GPU tensors."""
+
+    @property
+    @abstractmethod
+    def device(self) -> "torch.device":
+        """Return the device this transformer currently operates on."""
+
+    def to(self, device: "torch.device") -> "GPUTransformer":
+        """Move internal models to ``device``. Returns ``self``."""
+        return self
+
+
 class AudioFanOutTransformer(ABC):
+
     """Transformer that can emit zero, one, or many documents from a single input.
 
     Unlike AudioTransformer (which always returns exactly one document), a fan-out

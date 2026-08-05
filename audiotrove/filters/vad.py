@@ -14,11 +14,24 @@ try:
 except ImportError:
     HAS_TORCH = False
 
-from audiotrove.base import AudioFilter, AudioFanOutTransformer
+from audiotrove.base import GPUFilter, AudioFanOutTransformer
 from audiotrove.document import AudioDocument
 
 logger = logging.getLogger(__name__)
 _SILERO_INFERENCE_LOCK = threading.Lock()
+
+
+def _resolve_device(device):
+    """Return a torch.device (or None when torch is unavailable/invalid)."""
+    if not HAS_TORCH:
+        return None
+    try:
+        if isinstance(device, torch.device):
+            return device
+        return torch.device(device)
+    except Exception:  # noqa: BLE001 - tolerate stubbed torch in tests
+        return None
+
 
 
 def _load_silero_model():
@@ -44,34 +57,55 @@ def _load_silero_model():
     return torch.hub.load("snakers4/silero-vad", "silero_vad", force_reload=False, trust_repo=True)
 
 
-class SileroVADFilter(AudioFilter):
+class SileroVADFilter(GPUFilter):
     name = "silero_vad"
 
     def __init__(
-        self, min_speech_ratio: float = 0.3, threshold: float = 0.5, window_size_samples: int = 512
+        self,
+        min_speech_ratio: float = 0.3,
+        threshold: float = 0.5,
+        window_size_samples: int = 512,
+        device: str = "cpu",
     ):
         self.min_speech_ratio = min_speech_ratio
         self.threshold = threshold
         self.window_size = window_size_samples
         self._model = None
         self._utils = None
+        self._device = _resolve_device(device)
+
+    @property
+    def device(self):
+        """The torch.device this filter operates on (None without torch)."""
+        return self._device
+
+    def to(self, device) -> "SileroVADFilter":
+        """Move the internal model to ``device`` and return self."""
+        self._device = _resolve_device(device)
+        if self._model is not None and self._device is not None:
+            self._model = self._model.to(self._device)
+        return self
 
     def __getstate__(self):
         """Exclude the lazy-loaded torch model from pickling.
 
         When this filter is pickled for multiprocessing (ProcessPoolExecutor),
         we exclude the torch model so it doesn't get serialized. The model will
-        be lazily reloaded in the worker process when needed.
+        be lazily reloaded in the worker process when needed. The device is
+        stored as a string so it survives pickling without importing torch.
         """
         state = self.__dict__.copy()
         # Remove unpicklable torch model and utils
         state["_model"] = None
         state["_utils"] = None
+        state["_device"] = str(self._device) if self._device is not None else "cpu"
         return state
 
     def __setstate__(self, state):
         """Restore state after unpickling."""
+        device = state.pop("_device", "cpu")
         self.__dict__.update(state)
+        self._device = _resolve_device(device)
         # _model and _utils will be lazily loaded on first access
 
     @property
@@ -84,6 +118,8 @@ class SileroVADFilter(AudioFilter):
                 self._model, utils = _load_silero_model()
                 # utils may contain get_speech_timestamps
                 self._utils = utils
+                if self._device is not None:
+                    self._model = self._model.to(self._device)
             except Exception as e:  # noqa: BLE001
                 # If model cannot be loaded, log the failure and fallback
                 logger.warning(
@@ -124,6 +160,27 @@ class SileroVADFilter(AudioFilter):
                 timestamps.append({"start": start, "end": end})
         return timestamps
 
+    def _prepare_tensor(self, doc: AudioDocument):
+        """Return the audio as a torch tensor on this filter's device.
+
+        Reuses ``doc.gpu_tensor`` when it already lives on the right device to
+        avoid a redundant host->device copy, otherwise creates it from the CPU
+        audio array and caches it on the document for downstream GPU blocks.
+        """
+        gpu_tensor = getattr(doc, "gpu_tensor", None)
+        if (
+            gpu_tensor is not None
+            and self._device is not None
+            and getattr(gpu_tensor, "device", None) == self._device
+        ):
+            return gpu_tensor
+
+        audio_t = torch.from_numpy(np.ascontiguousarray(doc.audio, dtype=np.float32))
+        if self._device is not None:
+            audio_t = audio_t.to(self._device)
+        doc.gpu_tensor = audio_t
+        return audio_t
+
     def filter(self, doc: AudioDocument) -> bool:
         audio = doc.audio
         sr = doc.sample_rate
@@ -135,8 +192,9 @@ class SileroVADFilter(AudioFilter):
             try:
                 get_speech_timestamps = getattr(self._utils, "get_speech_timestamps", None)
                 if get_speech_timestamps is not None:
-                    # silero expects torch.Tensor
-                    audio_t = torch.from_numpy(audio)
+                    # silero expects torch.Tensor; reuse/populate the doc's
+                    # gpu_tensor so adjacent GPU blocks skip the host copy.
+                    audio_t = self._prepare_tensor(doc)
                     with _SILERO_INFERENCE_LOCK:
                         timestamps = get_speech_timestamps(
                             audio_t,
@@ -197,28 +255,50 @@ class VADSegmenter(AudioFanOutTransformer):
 
     name = "vad_segmenter"
 
-    def __init__(self, threshold: float = 0.5, window_size_samples: int = 512):
+    def __init__(
+        self,
+        threshold: float = 0.5,
+        window_size_samples: int = 512,
+        device: str = "cpu",
+    ):
         """Initialize VAD segmenter.
 
         Args:
             threshold: Silero VAD threshold (0-1). Default 0.5.
             window_size_samples: Window size for energy fallback. Default 512.
+            device: Torch device string for Silero inference. Default "cpu".
         """
         self.threshold = threshold
         self.window_size = window_size_samples
         self._model = None
         self._utils = None
+        self._device = _resolve_device(device)
+
+    @property
+    def device(self):
+        """The torch.device this segmenter operates on (None without torch)."""
+        return self._device
+
+    def to(self, device) -> "VADSegmenter":
+        """Move the internal model to ``device`` and return self."""
+        self._device = _resolve_device(device)
+        if self._model is not None and self._device is not None:
+            self._model = self._model.to(self._device)
+        return self
 
     def __getstate__(self):
         """Exclude the lazy-loaded torch model from pickling."""
         state = self.__dict__.copy()
         state["_model"] = None
         state["_utils"] = None
+        state["_device"] = str(self._device) if self._device is not None else "cpu"
         return state
 
     def __setstate__(self, state):
         """Restore state after unpickling."""
+        device = state.pop("_device", "cpu")
         self.__dict__.update(state)
+        self._device = _resolve_device(device)
 
     @property
     def model(self):
@@ -228,6 +308,8 @@ class VADSegmenter(AudioFanOutTransformer):
             try:
                 self._model, utils = _load_silero_model()
                 self._utils = utils
+                if self._device is not None:
+                    self._model = self._model.to(self._device)
             except Exception as e:  # noqa: BLE001
                 logger.warning(
                     f"Failed to load Silero VAD model: {e}. Falling back to energy-based VAD."
@@ -272,7 +354,9 @@ class VADSegmenter(AudioFanOutTransformer):
             try:
                 get_speech_timestamps = getattr(self._utils, "get_speech_timestamps", None)
                 if get_speech_timestamps is not None:
-                    audio_t = torch.from_numpy(audio)
+                    audio_t = torch.from_numpy(np.ascontiguousarray(audio, dtype=np.float32))
+                    if self._device is not None:
+                        audio_t = audio_t.to(self._device)
                     with _SILERO_INFERENCE_LOCK:
                         timestamps = get_speech_timestamps(
                             audio_t,

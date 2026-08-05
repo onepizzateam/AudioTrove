@@ -25,7 +25,9 @@ def tts_pipeline(
     checkpoint_path: str | None = None,
     transcribe: bool = False,
     whisper_model: str = "base",
+    device: str = "cpu",
 ) -> dict:
+
     """Curate audio files and export TTS-ready training manifests.
 
     Args:
@@ -61,22 +63,24 @@ def tts_pipeline(
     )
     reader = LocalAudioReader(patterns, min_duration_seconds=0.0, max_duration_seconds=None)
     pipeline = [
-        *([VADSegmenter()] if segment else []),
-        SileroVADFilter(min_speech_ratio=0.1),
-        SilenceTrimmingTransformer(padding_ms=padding_ms),
-        SNRFilter(min_snr_db=snr_min),
+        *([VADSegmenter(device=device)] if segment else []),
+        SileroVADFilter(min_speech_ratio=0.1, device=device),
+        SilenceTrimmingTransformer(padding_ms=padding_ms, device=device),
+        SNRFilter(min_snr_db=snr_min, device=device),
         DurationBucketFilter(min_duration, max_duration),
         # TODO: add an optional speaker consistency filter when a lightweight backend is available.
     ]
     if transcribe:
         from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
 
-        pipeline.insert(3, WhisperTranscriber(model_name=whisper_model))
+        pipeline.insert(3, WhisperTranscriber(model_name=whisper_model, device=device))
     executor = LocalExecutor(
         pipeline=pipeline,
         checkpoint_path=checkpoint_path or str(output_dir / "checkpoint.db"),
         num_workers=workers,
+        device=device,
     )
+
     exporter = TTSManifestExporter(str(output_dir), export_format=export_format)
     stats = executor.run(reader, exporter)
 

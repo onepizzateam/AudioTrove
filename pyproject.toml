@@ -42,6 +42,42 @@ gcs = ["gcsfs>=2023.1.0"]
 diarize = ["pyannote.audio>=3.1.0"]
 embed-dedup = ["faiss-cpu>=1.7.4", "speechbrain>=1.0.0"]
 transcribe = ["openai-whisper>=20231117"]
+# NEW GPU and training/inference extras
+gpu = [
+    "torch>=2.0.0",
+]
+transcribe-gpu = [
+    "faster-whisper>=1.0.0",
+]
+train-f5tts = [
+    "f5-tts>=1.0.0",
+]
+train-styletts2 = [
+    "styletts2>=0.1.0",
+]
+train-piper = [
+    "piper-train>=1.0.0",
+]
+train-matcha = [
+    "matcha-tts>=0.2.0",
+]
+infer = [
+    "faster-whisper>=1.0.0",
+    "f5-tts>=1.0.0",
+    "aiohttp>=3.9.0",
+]
+rust = [
+    # maturin builds the Rust extension
+    # actual build: `pip install maturin && maturin develop`
+]
+all = [
+    "audiotrove[gpu]",
+    "audiotrove[transcribe-gpu]",
+    "audiotrove[train-f5tts]",
+    "audiotrove[infer]",
+    "audiotrove[diarize]",
+    "audiotrove[enhance]",
+]
 dev = [
     "pytest",
     "pytest-cov",
@@ -49,6 +85,8 @@ dev = [
     "mypy",
     "click[testing]",
     "scipy>=1.10.0",
+    "torchcodec",
+    "maturin>=1.5",
 ]
 
 [project.urls]
@@ -64,7 +102,19 @@ testpaths = ["tests"]
 addopts = "-v --cov=audiotrove --cov-report=term-missing"
 
 [tool.coverage.run]
-omit = ["audiotrove/filters/enhance.py"]
+omit = [
+    "audiotrove/filters/enhance.py",
+    "audiotrove/inference/server.py",
+    "audiotrove/training/gpu.py",
+    "audiotrove/training/styletts2.py",
+    "audiotrove/training/piper.py",
+    "audiotrove/training/matcha.py",
+]
+
+[tool.maturin]
+python-source = "."
+manifest-path = "audiotrove-core/Cargo.toml"
+features = ["pyo3/extension-module"]
 
 [tool.ruff]
 line-length = 100
