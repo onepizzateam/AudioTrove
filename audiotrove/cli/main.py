@@ -112,6 +112,29 @@ def cli(verbose):
     show_default=True,
     help="Compute device for GPU-aware filters/transformers.",
 )
+@click.option(
+    "--tts-diarize",
+    is_flag=True,
+    default=False,
+    help="Run speaker diarization before VAD (requires pip install audiotrove[diarize]).",
+)
+@click.option(
+    "--tts-hf-token",
+    default=None,
+    help="HuggingFace token for pyannote models (required when --tts-diarize is set).",
+)
+@click.option(
+    "--tts-diarize-min-speakers",
+    default=None,
+    type=int,
+    help="Minimum number of speakers for diarization.",
+)
+@click.option(
+    "--tts-diarize-max-speakers",
+    default=None,
+    type=int,
+    help="Maximum number of speakers for diarization.",
+)
 def curate(
     input_path,
     output_path,
@@ -130,6 +153,10 @@ def curate(
     tts_transcribe,
     tts_whisper_model,
     device,
+    tts_diarize,
+    tts_hf_token,
+    tts_diarize_min_speakers,
+    tts_diarize_max_speakers,
 ):
 
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
@@ -174,6 +201,10 @@ def curate(
             transcribe=tts_transcribe,
             whisper_model=tts_whisper_model,
             device=device,
+            diarize=tts_diarize,
+            hf_token=tts_hf_token,
+            diarize_min_speakers=tts_diarize_min_speakers,
+            diarize_max_speakers=tts_diarize_max_speakers,
         )
 
         console.print("[cyan]TTS curation pipeline complete[/cyan]")
@@ -556,5 +587,3 @@ def serve(config_path, host, port):
 
 if __name__ == "__main__":
     cli()
-
-

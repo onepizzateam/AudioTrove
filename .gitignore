@@ -31,11 +31,15 @@ coverage.xml
 *.db
 *.sqlite
 
+# Poetry lock (optional, remove this line if you want to keep it)
+poetry.lock
+
 # Generic pipeline output dirs
 data/
 outputs/
 checkpoints/
 demo_out/
+C:/tmp/
 
 # ---------------------------------------------------------------------------
 # Benchmarking / testing / debug artifacts (produced, not source)
@@ -54,6 +58,7 @@ audit_flac_out/
 audit_resume_out/
 audit_tmp/
 debug-curated*/
+debug_*/
 sherlock-curated*/
 run_full_*/
 single_file_out/
@@ -76,7 +81,10 @@ audit_speech.flac
 *_stdout.txt
 *_stderr.txt
 sherlock_*.txt
+sherlock_*.log
 whisper_*.txt
+whisper_*.log
+test_*.txt
 test_full_*.txt
 test_audit_output.txt
 
