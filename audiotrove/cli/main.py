@@ -22,6 +22,32 @@ def cli(verbose):
         logging.basicConfig(level=logging.WARNING)
 
 
+@cli.command("version-info")
+def version_info():
+    """Print AudioTrove and key dependency versions."""
+    import importlib.metadata
+    import platform
+
+    table = Table(title="AudioTrove version info")
+    table.add_column("Component")
+    table.add_column("Version")
+    table.add_row("audiotrove", __version__)
+
+    for package in ("torch", "torchaudio", "numpy", "fsspec"):
+        try:
+            version = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            version = "not installed"
+        table.add_row(package, version)
+
+    table.add_row("python", platform.python_version())
+    table.add_row(
+        "platform",
+        f"{platform.system()}-{platform.release()} {platform.machine()}",
+    )
+    console.print(table)
+
+
 @cli.command()
 @click.argument("input_path")
 @click.argument("output_path")

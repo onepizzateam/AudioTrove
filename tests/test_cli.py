@@ -45,6 +45,18 @@ def test_cli_group_version():
     assert __version__ in result.output
 
 
+def test_version_info_command():
+    """Test version-info prints the app, deps, runtime, and platform."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["version-info"])
+
+    assert result.exit_code == 0
+    assert "audiotrove" in result.output
+    assert __version__ in result.output
+    assert "python" in result.output
+    assert "platform" in result.output
+
+
 def test_cli_group_help():
     """Test main CLI help."""
     runner = CliRunner()
