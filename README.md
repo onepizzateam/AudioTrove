@@ -310,6 +310,21 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and keep changes small and tested.
 Ruff is included in the development extras; add tests for new components and
 run them across the supported Windows, macOS, and Linux environments.
 
+## Citation
+
+If you use AudioTrove in your research, please cite it as below:
+
+```bibtex
+@software{audiotrove,
+  author = {Jha, Palak},
+  title = {AudioTrove: Composable Open-Source Audio Data Curation Pipeline},
+  version = {0.1.1},
+  url = {https://github.com/onepizzateam/AudioTrove},
+  license = {MIT},
+  date = {2026}
+}
+```
+
 ## License
 
 AudioTrove is released under the [MIT License](LICENSE).
