@@ -1,74 +1,92 @@
+﻿# Python
 __pycache__/
 *.pyc
 
+# Environments
 .venv/
 .env
 
+# Build / packaging
 build_output.txt
 tasks.txt
+dist/
+build/
+*.egg-info/
+packaging/
 
+# Rust extension build artifacts
+target/
+Cargo.lock
+
+# Caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-dist/
-build/
-packaging/
+# Coverage
+.coverage
+coverage.xml
 
-# Audio and benchmark outputs
-*.wav
-*.flac
-*.mp3
-*.tar.gz
-audit_flac_out/
-audit_resume_out/
-audit_tmp/
-audit_speech.flac
-benchmarks/LibriSpeech/
-benchmarks/tts_out_*/
-benchmarks/diag_out/
-benchmarks/single_file_out/
-benchmarks/smoke_out*/
-debug-curated*/
-sherlock-curated*/
-whisper_install_stdout.txt
-
-# Logs and debug output
-*.log
-debug_*/
-sherlock_*.txt
-sherlock_*.log
-test_*.txt
-whisper_*.txt
-whisper_*.log
-
-# Benchmark stdout/stderr artifacts
-benchmarks/run_*.json
-benchmarks/run_*.txt
-benchmarks/run_*.log
-benchmarks/e2e_results.json
-benchmarks/phase0_baseline.json
-benchmarks/before_curation.json
-benchmarks/benchmark_results.json
-benchmarks/demo_output.txt
-benchmarks/curate_help.txt
-benchmarks/inspect_help.txt
-benchmarks/sample_manifest_entry.json
-benchmarks/vad_check_manifest.jsonl
+# Databases / checkpoints
+*.db
+*.sqlite
 
 # Poetry lock (optional, remove this line if you want to keep it)
 poetry.lock
 
-*.db
-*.sqlite
-
+# Generic pipeline output dirs
 data/
 outputs/
 checkpoints/
-
-.coverage
-coverage.xml
-*.egg-info/
-
 demo_out/
 C:/tmp/
+
+# ---------------------------------------------------------------------------
+# Benchmarking / testing / debug artifacts (produced, not source)
+# ---------------------------------------------------------------------------
+
+# Benchmark harness outputs, datasets, and result files
+benchmarks/
+!benchmarks/*.py
+
+# Downloaded datasets / archives
+*.tar.gz
+LibriSpeech/
+
+# Produced curation output directories
+audit_flac_out/
+audit_resume_out/
+audit_tmp/
+debug-curated*/
+debug_*/
+sherlock-curated*/
+run_full_*/
+single_file_out/
+smoke_out*/
+tts_out_*/
+diag_out/
+
+# Produced audio artifacts
+audit_speech.flac
+*.wav
+*.flac
+*.mp3
+*.ogg
+*.opus
+# Keep committed test fixtures
+!tests/fixtures/**
+
+# Run logs and captured stdout/stderr
+*.log
+*_stdout.txt
+*_stderr.txt
+sherlock_*.txt
+sherlock_*.log
+whisper_*.txt
+whisper_*.log
+test_*.txt
+test_full_*.txt
+test_audit_output.txt
+
+# Helper / one-off scripts
+create_issues.sh

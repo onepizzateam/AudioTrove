@@ -129,18 +129,45 @@ class LocalExecutor:
     When num_workers=1 (default), runs sequentially (backward compatible).
     When num_workers>1, uses ProcessPoolExecutor for parallel document processing.
 
-    The main process always owns the SQLite connection and performs all writes
+    The main process always owns the SQLite checkpoint and performs all writes
     to avoid concurrent write issues. Workers only process documents through
     the pipeline and return results.
+
+    When the optional ``audiotrove_core`` Rust extension is installed the
+    checkpoint is backed by a lock-free store that supports batched commits;
+    otherwise the built-in sqlite3 path is used transparently.
     """
 
-    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None, num_workers: int = 1):
+    def __init__(
+        self,
+        pipeline: list,
+        checkpoint_path: Optional[str] = None,
+        num_workers: int = 1,
+        device: str = "cpu",
+    ):
         self.pipeline = pipeline
         self.checkpoint_path = checkpoint_path
         self.num_workers = num_workers
+        self.device = device
         self._conn = None
+        # Optional Rust-backed checkpoint store (audiotrove_core). When present
+        # it provides lock-free, batched SQLite writes that lift the parallel
+        # scaling ceiling. When absent we transparently use the sqlite3 path.
+        self._store = None
+        self._use_rust_checkpoint = False
+        if checkpoint_path:
+            try:
+                from audiotrove_core import CheckpointStore
+
+                self._store = CheckpointStore(checkpoint_path)
+                self._use_rust_checkpoint = True
+            except ImportError:
+                self._use_rust_checkpoint = False
 
     def _init_db(self):
+        if self._use_rust_checkpoint:
+            # Rust CheckpointStore initialises its own schema on construction.
+            return
         if not self.checkpoint_path:
             return
         path = Path(self.checkpoint_path)
@@ -156,6 +183,8 @@ class LocalExecutor:
         self._conn.commit()
 
     def _is_processed(self, doc_id: str) -> bool:
+        if self._use_rust_checkpoint:
+            return self._store.is_processed(doc_id) if self._store else False
         if not self._conn:
             return False
         cur = self._conn.cursor()
@@ -163,6 +192,10 @@ class LocalExecutor:
         return cur.fetchone() is not None
 
     def _mark_processed(self, doc_id: str) -> None:
+        if self._use_rust_checkpoint:
+            if self._store:
+                self._store.mark_processed(doc_id)
+            return
         if not self._conn:
             return
         cur = self._conn.cursor()
@@ -172,6 +205,53 @@ class LocalExecutor:
         except sqlite3.IntegrityError:
             # already recorded
             pass
+
+    def _mark_batch(self, doc_ids: list) -> None:
+        """Persist a batch of completed doc_ids in a single transaction.
+
+        This is the key throughput fix for the parallel executor: rather than
+        committing once per document, all completed ids in a chunk of futures
+        are committed together. Uses the Rust ``mark_batch`` when available and
+        an executemany transaction otherwise.
+        """
+        if not doc_ids:
+            return
+        if self._use_rust_checkpoint:
+            if self._store:
+                self._store.mark_batch(list(doc_ids))
+            return
+        if not self._conn:
+            return
+        cur = self._conn.cursor()
+        cur.executemany(
+            "INSERT OR IGNORE INTO processed (doc_id) VALUES (?)",
+            [(doc_id,) for doc_id in doc_ids],
+        )
+        self._conn.commit()
+
+    def _move_pipeline_to_device(self, device) -> None:
+        """Move every GPU-aware pipeline block onto ``device``."""
+        from audiotrove.base import GPUFilter, GPUTransformer
+
+        for block in self.pipeline:
+            if isinstance(block, (GPUFilter, GPUTransformer)):
+                try:
+                    block.to(device)
+                except Exception:  # noqa: BLE001 - never let device move crash the run
+                    logger.debug("Failed to move %s to %s", block, device, exc_info=True)
+
+    def _maybe_move_to_device(self) -> None:
+        """Resolve and apply the configured device to GPU-aware blocks."""
+        if not self.device or self.device == "cpu":
+            return
+        try:
+            from audiotrove.gpu.device import get_device
+
+            resolved = get_device(self.device)
+        except Exception:  # noqa: BLE001
+            logger.debug("Device resolution failed; staying on CPU", exc_info=True)
+            return
+        self._move_pipeline_to_device(resolved)
 
     def run(self, reader, writer) -> dict:
         """Run the pipeline over documents produced by `reader`.
@@ -199,6 +279,7 @@ class LocalExecutor:
         from audiotrove.base import AudioFanOutTransformer
 
         self._init_db()
+        self._maybe_move_to_device()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
         for doc in reader:
@@ -306,10 +387,13 @@ class LocalExecutor:
     def _run_parallel(self, reader, writer) -> dict:
         """Parallel processing using ProcessPoolExecutor.
 
-        Main process owns SQLite connection. Workers process documents through
-        the pipeline and return results. Main process writes and checkpoints.
+        Main process owns the checkpoint. Workers process documents through the
+        pipeline and return results. Completed doc_ids are committed in batches
+        (one transaction per BATCH futures) which is the key throughput fix for
+        parallel scaling.
         """
         self._init_db()
+        self._maybe_move_to_device()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
         # Windows process workers cannot share the loaded torch model and four
@@ -351,6 +435,8 @@ class LocalExecutor:
         executor_kwargs = {"max_workers": self.num_workers}
         if executor_type is ProcessPoolExecutor:
             executor_kwargs.update(initializer=_worker_init, initargs=(preload_silero,))
+
+        BATCH = 64
         with executor_type(**executor_kwargs) as executor:
             # Submit all tasks
             future_to_doc = {
@@ -358,38 +444,46 @@ class LocalExecutor:
                 for doc in pending_docs
             }
 
-            # Process results as they complete (main process handles writes)
-            for future in as_completed(future_to_doc):
-                try:
-                    docs, keep, error, error_block, rejected = future.result()
+            # Drain futures in chunks and commit the checkpoint once per chunk
+            # rather than once per document (single SQLite transaction per BATCH).
+            futures = list(future_to_doc.keys())
+            for i in range(0, len(futures), BATCH):
+                chunk = futures[i : i + BATCH]
+                completed_ids = []
+                for future in as_completed(chunk):
+                    try:
+                        docs, keep, error, error_block, rejected = future.result()
 
-                    stats["processed"] += 1
-                    stats["skipped"] += rejected
+                        stats["processed"] += 1
+                        stats["skipped"] += rejected
 
-                    if error:
-                        for doc in docs:
-                            logger.exception(f"Error processing {doc.source_path}: {error}")
+                        if error:
+                            for doc in docs:
+                                logger.exception(f"Error processing {doc.source_path}: {error}")
+                            stats["errors"] += 1
+                            if error_block and error_block not in stats["errors_by_filter"]:
+                                stats["errors_by_filter"][error_block] = 0
+                            if error_block:
+                                stats["errors_by_filter"][error_block] += 1
+
+                        if keep and docs and not error:
+                            for doc in docs:
+                                writer.write(doc)
+                                completed_ids.append(doc.doc_id)
+                            stats["kept"] += len(docs)
+                        elif not rejected:
+                            stats["skipped"] += len(docs) or 1
+
+                        if not error:
+                            # Fan-out children are not reader inputs. Persist the
+                            # original source ID so a resume skips the whole input.
+                            completed_ids.append(future_to_doc[future].doc_id)
+
+                    except Exception:  # noqa: BLE001
+                        logger.exception("Worker task failed")
                         stats["errors"] += 1
-                        if error_block and error_block not in stats["errors_by_filter"]:
-                            stats["errors_by_filter"][error_block] = 0
-                        if error_block:
-                            stats["errors_by_filter"][error_block] += 1
 
-                    if keep and docs and not error:
-                        for doc in docs:
-                            writer.write(doc)
-                            self._mark_processed(doc.doc_id)
-                        stats["kept"] += len(docs)
-                    elif not rejected:
-                        stats["skipped"] += len(docs) or 1
-
-                    if not error:
-                        # Fan-out children are not reader inputs. Persist the
-                        # original source ID so a resume skips the whole input.
-                        self._mark_processed(future_to_doc[future].doc_id)
-
-                except Exception:  # noqa: BLE001
-                    logger.exception("Worker task failed")
-                    stats["errors"] += 1
+                # One checkpoint transaction for the whole chunk.
+                self._mark_batch(completed_ids)
 
         return stats

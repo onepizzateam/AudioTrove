@@ -20,16 +20,25 @@ def _make_doc():
 
 
 def test_whisper_transcriber_raises_without_whisper(monkeypatch):
-    """WhisperTranscriber.__init__ raises ImportError if openai-whisper is absent."""
+    """WhisperTranscriber lazy-loads and raises ImportError if no backend available."""
+    # Block both faster-whisper and openai-whisper
+    monkeypatch.setitem(sys.modules, "faster_whisper", None)
     monkeypatch.setitem(sys.modules, "whisper", None)
-    with pytest.raises(ImportError, match="transcribe"):
-        from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
+    
+    sys.modules.pop("audiotrove.transformers.whisper_transcribe", None)
+    from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
 
-        WhisperTranscriber()
+    transformer = WhisperTranscriber()
+    # The error happens when accessing .model (lazy load), not in __init__
+    with pytest.raises(ImportError, match="transcribe"):
+        _ = transformer.model
 
 
 def test_whisper_transcriber_writes_metadata(monkeypatch):
-    """WhisperTranscriber.transform writes transcription to doc.metadata."""
+    """WhisperTranscriber.transform writes transcription using openai-whisper fallback."""
+    # Block faster-whisper, provide fake openai-whisper
+    monkeypatch.setitem(sys.modules, "faster_whisper", None)
+    
     fake_whisper = types.ModuleType("whisper")
     fake_whisper.load_model = lambda name: object()
     fake_whisper.transcribe = lambda model, audio, **kwargs: {"text": " hello world"}
@@ -38,12 +47,10 @@ def test_whisper_transcriber_writes_metadata(monkeypatch):
     sys.modules.pop("audiotrove.transformers.whisper_transcribe", None)
     from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
 
-    transformer = WhisperTranscriber.__new__(WhisperTranscriber)
-    transformer.model_name = "base"
-    transformer._model = object()
-
+    transformer = WhisperTranscriber()
     result = transformer.transform(_make_doc())
     assert result.metadata["transcription"] == "hello world"
+    assert result.metadata["transcription_backend"] == "openai_whisper"
 
 
 def test_tts_pipeline_accepts_transcribe_flag():

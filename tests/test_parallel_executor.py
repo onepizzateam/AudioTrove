@@ -51,8 +51,9 @@ def test_parallel_run_with_fake_executor(monkeypatch, tmp_path):
             return False
 
     monkeypatch.setattr(executor_mod.local, "ProcessPoolExecutor", FakeExecutor)
-    # as_completed should iterate over the dict of futures
-    monkeypatch.setattr(executor_mod.local, "as_completed", lambda futs: iter(futs.keys()))
+    # as_completed accepts any iterable of futures (the executor now drains a
+    # list-based chunk per batch), so mirror the stdlib API and iterate directly.
+    monkeypatch.setattr(executor_mod.local, "as_completed", lambda futs: iter(futs))
 
     docs = [_make_doc(1), _make_doc(2)]
 
