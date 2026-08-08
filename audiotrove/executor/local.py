@@ -174,6 +174,8 @@ class LocalExecutor:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(path))
         cur = self._conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
         cur.execute("""
         CREATE TABLE IF NOT EXISTS processed (
             doc_id TEXT PRIMARY KEY,

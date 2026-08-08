@@ -366,3 +366,38 @@ def test_cli_verbose_flag_short():
     result = runner.invoke(cli, ["-v", "--help"])
     # Should fail because -v consumes the argument, but it shows verbose flag works
     assert result.exit_code != 0 or "-v" in result.output
+
+
+def test_checkpoint_wal_mode_and_vacuum(tmp_path):
+    """Test LocalExecutor _init_db sets WAL mode and checkpoint-vacuum works."""
+    import sqlite3
+    from audiotrove.executor.local import LocalExecutor
+
+    db_path = tmp_path / "checkpoint.db"
+    executor = LocalExecutor(pipeline=[], checkpoint_path=str(db_path))
+    executor._init_db()
+
+    # Check WAL mode
+    cur = executor._conn.cursor()
+    cur.execute("PRAGMA journal_mode")
+    mode = cur.fetchone()[0]
+    assert mode.lower() == "wal"
+
+    # Insert rows and close
+    executor._mark_processed("doc1")
+    executor._mark_processed("doc2")
+    executor._conn.close()
+
+    # Test vacuum CLI command
+    runner = CliRunner()
+    result = runner.invoke(cli, ["checkpoint-vacuum", str(db_path)])
+    assert result.exit_code == 0
+    assert "vacuumed" in result.output
+
+    # Verify readable after vacuum
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("SELECT doc_id FROM processed")
+    rows = [r[0] for r in cur.fetchall()]
+    assert set(rows) == {"doc1", "doc2"}
+    conn.close()
