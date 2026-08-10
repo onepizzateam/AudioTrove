@@ -1,78 +1,55 @@
 # Contributing to AudioTrove
 
 ## Setup
-
 **Prerequisites:** Python 3.10+, ffmpeg, git.
-
 Install ffmpeg for your platform:
-
 ```bash
 # macOS
 brew install ffmpeg
-
 # Ubuntu / Debian
 sudo apt-get install ffmpeg
-
 # Windows (via conda)
 conda install -c conda-forge ffmpeg
 ```
-
 Clone and install in editable mode with all dev dependencies:
-
 ```bash
 git clone https://github.com/onepizzateam/AudioTrove.git
 cd AudioTrove
 pip install -e ".[dev]"
 ```
-
 Verify the install:
-
 ```bash
 audiotrove --version
 pytest tests/ -x -q
 ```
-
 ---
-
 ## Running tests
-
 Full suite with coverage:
-
 ```bash
 pytest tests/ -v --cov=audiotrove --cov-report=term-missing
 ```
-
 Single file:
-
 ```bash
 pytest tests/test_vad.py -v
 ```
-
 Tests use synthetic audio (sine waves generated via scipy) and mock the Silero VAD model
 — no internet connection is required.
 
 ---
-
 ## Linting and type checking
-
 ```bash
 # Check for lint errors and show auto-fix suggestions
 ruff check audiotrove/ --show-fixes
-
 # Format code in-place
 ruff format audiotrove/
-
 # Type checking
 mypy audiotrove/
 ```
-
 CI runs all three on every push. Fix any `ruff check` errors before opening a PR; `mypy`
 warnings on third-party stubs are acceptable.
 
 ---
-
 ## Adding a new filter
-
 1. Subclass `AudioFilter` from [`audiotrove/base.py`](audiotrove/base.py) and implement:
    - `name: str` — unique snake_case identifier used in checkpoint keys
    - `filter(doc: AudioDocument) -> bool` — return `True` to keep, `False` to reject;
@@ -83,9 +60,7 @@ warnings on third-party stubs are acceptable.
    pipeline.
 
 ---
-
 ## Adding a new transformer
-
 1. Subclass `AudioTransformer` (1-to-1) or `AudioFanOutTransformer` (1-to-many) from
    [`audiotrove/base.py`](audiotrove/base.py) and implement `transform()`.
 2. **Fan-out transformers:** `doc_id` values for child documents must be derived
@@ -96,9 +71,26 @@ warnings on third-party stubs are acceptable.
    inside `transform()` or `__init__`, never at module import time.
 
 ---
+## PRs and contribution etiquette
 
+**Please read this before opening a PR.**
+
+I'm the sole maintainer of AudioTrove. My time is limited and I'm selective about what gets merged.
+
+### No drive-by PRs
+
+A drive-by PR is when someone opens a pull request, receives feedback, and vanishes. If I open your profile and see that you've made 500+ contributions in a day I'm assuming it's a hit-and-run type situation. These will be closed without further comment.
+
+**Rules:**
+
+- **Open an issue first** for any non-trivial change. Get a go-ahead before writing code — this avoids wasted effort on both sides.
+- **Respond to feedback.** If I leave a review and you don't respond within 14 days, the PR gets closed. You're welcome to reopen it when you're ready to engage.
+- **No AI-slop.** PRs that are clearly AI-generated output pasted in without reading, testing, or understanding the code will be closed immediately. AI-assisted PRs are fine; AI-generated PRs you haven't actually engaged with are not.
+
+If you're not planning to see a PR through to merge, please don't open it.
+
+---
 ## PR checklist
-
 - [ ] Tests pass locally (`pytest tests/ -x -q`)
 - [ ] `ruff check audiotrove/` passes with no errors
 - [ ] New components have focused pass and fail unit tests
