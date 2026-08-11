@@ -55,23 +55,95 @@ class LocalAudioReader:
         if fsspec is None:
             raise RuntimeError("fsspec is required for LocalAudioReader")
 
-        seen_paths = set()  # Track paths we've already yielded to avoid duplicates
-
+        # Collect all matching paths across every pattern, de-duplicated while
+        # preserving discovery order. ``fs`` is the filesystem handle of the last
+        # pattern; for local globbing (the common case) every pattern shares the
+        # same handle, and the Python fallback below only needs it for opening.
+        seen_paths = set()
+        paths: list[str] = []
+        fs = None
         for pattern in self.path_patterns:
             fs, path = fsspec.core.url_to_fs(pattern)
             for fpath in fs.glob(path):
-                # Skip if we've already processed this path
                 if fpath in seen_paths:
                     continue
                 seen_paths.add(fpath)
+                paths.append(fpath)
 
-                try:
-                    doc = self._load(fpath, fs)
-                    yield doc
-                except Exception as e:  # noqa: BLE001
-                    # Log and continue — don't let one bad file stop the whole load
-                    logger.warning(f"Failed to load {fpath}: {e}")
-                    yield None
+        if not paths:
+            return
+
+        # Prefer the Rust extension's batch decoder when it is installed: it
+        # decodes and sinc-resamples off the GIL in parallel. When the extension
+        # isn't available we transparently use the pure-Python per-file path.
+        try:
+            from audiotrove_core import decode_audio_batch
+        except ImportError:
+            decode_audio_batch = None
+
+        if decode_audio_batch is not None:
+            yield from self._iter_rust(paths, decode_audio_batch, fs)
+        else:
+            yield from self._iter_python(paths, fs)
+
+    def _iter_rust(self, paths, decode_audio_batch, fs) -> Iterator[Optional[AudioDocument]]:
+        """Decode a batch of local files through the Rust extension.
+
+        Rust returns ``(samples, actual_sr, path)`` tuples with mono f32 already
+        resampled to ``target_sr``. Files it could not read come back with an
+        empty sample array and ``sr == 0``; we surface those as ``None`` so the
+        executor's skip/stat accounting is identical to the Python path. If the
+        batch call itself fails we degrade to the Python path rather than losing
+        the whole batch.
+        """
+        try:
+            results = decode_audio_batch(paths, int(self.target_sr))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Rust batch decode failed ({e}); using Python fallback.")
+            yield from self._iter_python(paths, fs)
+            return
+
+        for samples, actual_sr, path in results:
+            if actual_sr == 0 or samples is None or len(samples) == 0:
+                logger.warning(f"Failed to decode {path} via Rust; skipping.")
+                yield None
+                continue
+            audio = np.asarray(samples, dtype=np.float32)
+            yield self._make_doc(audio, path)
+
+    def _iter_python(self, paths, fs) -> Iterator[Optional[AudioDocument]]:
+        """Per-file decode via torchaudio/soundfile (the original behaviour)."""
+        for path in paths:
+            try:
+                yield self._load(path, fs)
+            except Exception as e:  # noqa: BLE001
+                # Log and continue — don't let one bad file stop the whole load
+                logger.warning(f"Failed to load {path}: {e}")
+                yield None
+
+    def _make_doc(self, audio: np.ndarray, path: str) -> Optional[AudioDocument]:
+        """Build an AudioDocument from already-decoded mono samples at target_sr.
+
+        Applies the same min/max duration policy as ``_load`` so the Rust and
+        Python paths produce identical documents.
+        """
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1).astype(np.float32)
+
+        duration = float(len(audio)) / float(self.target_sr)
+        if duration < self.min_duration:
+            return None
+        if self.max_duration and duration > self.max_duration:
+            audio = audio[: int(self.max_duration * self.target_sr)]
+            duration = self.max_duration
+
+        return AudioDocument(
+            audio=np.asarray(audio, dtype=np.float32),
+            sample_rate=self.target_sr,
+            source_path=path,
+            duration_seconds=duration,
+            doc_id=make_doc_id(path),
+        )
 
     def _load(self, path: str, fs) -> Optional[AudioDocument]:
         if torchaudio is None:

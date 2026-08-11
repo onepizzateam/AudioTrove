@@ -60,6 +60,11 @@ def _load_silero_model():
 class SileroVADFilter(GPUFilter):
     name = "silero_vad"
 
+    #: Number of documents processed per acquisition of the Silero inference
+    #: lock in :meth:`filter_batch`. Batching amortises the lock and model
+    #: setup cost across many short clips instead of paying it per document.
+    BATCH_SIZE = 32
+
     def __init__(
         self,
         min_speech_ratio: float = 0.3,
@@ -181,13 +186,19 @@ class SileroVADFilter(GPUFilter):
         doc.gpu_tensor = audio_t
         return audio_t
 
-    def filter(self, doc: AudioDocument) -> bool:
+    def _run_silero(self, doc: AudioDocument, model) -> bool:
+        """Run VAD for a single document using an already-resolved ``model``.
+
+        This holds no lock; callers are responsible for serialising Silero
+        inference via ``_SILERO_INFERENCE_LOCK`` and passing the loaded model
+        in. When ``model`` is ``None`` (torch unavailable or load failed) the
+        energy-based fallback is used, so this method always produces a result.
+        """
         audio = doc.audio
         sr = doc.sample_rate
 
         timestamps = None
         backend_used = None
-        model = self.model
         if model is not None and hasattr(self, "_utils") and HAS_TORCH:
             try:
                 get_speech_timestamps = getattr(self._utils, "get_speech_timestamps", None)
@@ -195,14 +206,13 @@ class SileroVADFilter(GPUFilter):
                     # silero expects torch.Tensor; reuse/populate the doc's
                     # gpu_tensor so adjacent GPU blocks skip the host copy.
                     audio_t = self._prepare_tensor(doc)
-                    with _SILERO_INFERENCE_LOCK:
-                        timestamps = get_speech_timestamps(
-                            audio_t,
-                            model,
-                            sampling_rate=sr,
-                            threshold=self.threshold,
-                            window_size_samples=self.window_size,
-                        )
+                    timestamps = get_speech_timestamps(
+                        audio_t,
+                        model,
+                        sampling_rate=sr,
+                        threshold=self.threshold,
+                        window_size_samples=self.window_size,
+                    )
                     # convert to simple list of dicts
                     ts = []
                     for t in timestamps:
@@ -236,6 +246,33 @@ class SileroVADFilter(GPUFilter):
         doc.metadata["vad_speech_timestamps"] = timestamps
         doc.metadata["vad_backend"] = backend_used or "energy_fallback"
         return bool(ratio >= self.min_speech_ratio)
+
+    def filter(self, doc: AudioDocument) -> bool:
+        with _SILERO_INFERENCE_LOCK:
+            model = self.model if HAS_TORCH else None
+            return self._run_silero(doc, model)
+
+    def filter_batch(self, docs: list[AudioDocument]) -> list[bool]:
+        """Filter a list of documents, acquiring the Silero lock once.
+
+        Equivalent to ``[self.filter(d) for d in docs]`` but pays the lock and
+        model-resolution cost a single time for the whole batch, which removes
+        the per-document lock contention that dominated the sequential VAD path.
+        A failure on one document degrades to ``False`` for that document only.
+        """
+        results: list[bool] = []
+        with _SILERO_INFERENCE_LOCK:
+            model = self.model if HAS_TORCH else None
+            for doc in docs:
+                try:
+                    results.append(self._run_silero(doc, model))
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        f"Silero VAD batch inference failed for "
+                        f"{getattr(doc, 'source_path', '?')}: {e}."
+                    )
+                    results.append(False)
+        return results
 
 
 class VADSegmenter(AudioFanOutTransformer):

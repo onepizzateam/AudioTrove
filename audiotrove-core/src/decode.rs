@@ -1,5 +1,8 @@
 use pyo3::prelude::*;
 use rayon::prelude::*;
+use rubato::{
+    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+};
 use symphonia::core::audio::Signal;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::FormatOptions;
@@ -13,8 +16,8 @@ use std::path::Path;
 ///
 /// Returns one tuple per input path: `(samples, actual_sample_rate, path)`.
 /// Samples are mono f32 in the range [-1, 1]. When `target_sr` is non-zero and
-/// differs from a file's native rate, the samples are resampled with simple
-/// linear interpolation. Files that fail to decode yield an empty sample vector
+/// differs from a file's native rate, the samples are resampled with
+/// high-quality sinc interpolation. Files that fail to decode yield an empty sample vector
 /// with a sample rate of 0 so the caller can detect and skip them.
 #[pyfunction]
 pub fn decode_audio_batch(
@@ -98,14 +101,95 @@ fn decode_one(path: &str, target_sr: u32) -> Result<(Vec<f32>, u32), String> {
     }
 
     if target_sr != 0 && native_sr != 0 && target_sr != native_sr {
-        mono = resample_linear(&mono, native_sr, target_sr);
+        mono = resample_sinc(&mono, native_sr, target_sr);
         Ok((mono, target_sr))
     } else {
         Ok((mono, native_sr))
     }
 }
 
-/// Simple linear-interpolation resampler.
+/// High-quality sinc-interpolation resampler (band-limited, anti-aliased).
+///
+/// Uses rubato's `SincFixedIn` with a Blackman-Harris window. This replaces the
+/// previous linear interpolation to avoid audible aliasing and preserve SNR
+/// through sample-rate conversion. If the resampler cannot be constructed or a
+/// chunk fails to process, it degrades gracefully to the linear fallback rather
+/// than dropping the audio.
+fn resample_sinc(input: &[f32], from_sr: u32, to_sr: u32) -> Vec<f32> {
+    if input.is_empty() || from_sr == 0 || to_sr == 0 || from_sr == to_sr {
+        return input.to_vec();
+    }
+
+    let ratio = to_sr as f64 / from_sr as f64;
+    let chunk_size = 1024usize;
+
+    let params = SincInterpolationParameters {
+        sinc_len: 256,
+        f_cutoff: 0.95,
+        interpolation: SincInterpolationType::Linear,
+        oversampling_factor: 256,
+        window: WindowFunction::BlackmanHarris2,
+    };
+
+    let mut resampler = match SincFixedIn::<f32>::new(ratio, 2.0, params, chunk_size, 1) {
+        Ok(r) => r,
+        Err(_) => return resample_linear(input, from_sr, to_sr),
+    };
+
+    let delay = resampler.output_delay();
+    let expected = ((input.len() as f64) * ratio).round() as usize;
+    let mut output: Vec<f32> = Vec::with_capacity(expected + chunk_size);
+    let mut chunk_buf: Vec<f32> = vec![0.0; chunk_size];
+    let mut pos = 0usize;
+
+    while pos < input.len() {
+        let end = (pos + chunk_size).min(input.len());
+        let n = end - pos;
+        chunk_buf[..n].copy_from_slice(&input[pos..end]);
+        for v in chunk_buf.iter_mut().skip(n) {
+            *v = 0.0;
+        }
+        let waves_in = vec![chunk_buf.clone()];
+        match resampler.process(&waves_in, None) {
+            Ok(mut waves_out) => {
+                if let Some(ch) = waves_out.drain(..).next() {
+                    output.extend_from_slice(&ch);
+                }
+            }
+            Err(_) => return resample_linear(input, from_sr, to_sr),
+        }
+        pos = end;
+    }
+
+    // Flush trailing samples held in the resampler's internal buffers so the
+    // output covers the full expected length (accounting for startup latency).
+    let zero_chunk = vec![vec![0.0f32; chunk_size]];
+    let mut guard = 0;
+    while output.len() < delay + expected && guard < 16 {
+        match resampler.process(&zero_chunk, None) {
+            Ok(mut waves_out) => {
+                if let Some(ch) = waves_out.drain(..).next() {
+                    output.extend_from_slice(&ch);
+                }
+            }
+            Err(_) => break,
+        }
+        guard += 1;
+    }
+
+    // Compensate for the resampler's startup latency and trim to the expected
+    // number of frames so downstream duration math stays exact.
+    if output.len() > delay {
+        output.drain(0..delay);
+    }
+    if output.len() > expected {
+        output.truncate(expected);
+    }
+    output
+}
+
+/// Linear-interpolation resampler retained as a graceful fallback for the rare
+/// case that the sinc resampler cannot be constructed or fails mid-stream.
 fn resample_linear(input: &[f32], from_sr: u32, to_sr: u32) -> Vec<f32> {
     if input.is_empty() || from_sr == 0 || to_sr == 0 || from_sr == to_sr {
         return input.to_vec();

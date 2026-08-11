@@ -30,7 +30,13 @@ def tts_pipeline(
     hf_token: str | None = None,
     diarize_min_speakers: int | None = None,
     diarize_max_speakers: int | None = None,
+    train: bool = False,
+    train_framework: str = "f5tts",
+    epochs: int = 100,
+    batch_size: int = 16,
+    num_gpus: int = 1,
 ) -> dict:
+
 
     """Curate audio files and export TTS-ready training manifests.
 
@@ -53,10 +59,17 @@ def tts_pipeline(
         hf_token: HuggingFace token required by pyannote models.
         diarize_min_speakers: Optional lower bound passed to the diarization pipeline.
         diarize_max_speakers: Optional upper bound passed to the diarization pipeline.
+        train: Fine-tune a voice model on the curated manifest after curation.
+        train_framework: Trainer to use when ``train`` is set ("f5tts", etc.).
+        epochs: Training epochs (only used when ``train`` is set).
+        batch_size: Training batch size (only used when ``train`` is set).
+        num_gpus: GPU count for training/DDP (only used when ``train`` is set).
 
     Returns:
         Summary with kept, filtered, total_duration_seconds, and output_files.
+        When ``train`` is set, also includes train_summary and model_path.
     """
+
     if export_format is None:
         export_format = ["ljspeech", "f5tts"]
     if extensions is None:
@@ -110,9 +123,37 @@ def tts_pipeline(
     exporter = TTSManifestExporter(str(output_dir), export_format=export_format)
     stats = executor.run(reader, exporter)
 
-    return {
+    summary = {
         "kept": stats["kept"],
         "filtered": stats["skipped"],
         "total_duration_seconds": round(exporter.total_duration_seconds, 4),
         "output_files": exporter.output_files,
     }
+
+    # Optional post-curation fine-tuning. Off by default so curation-only callers
+    # keep the original return shape. Reuses the same trainer primitive the
+    # end-to-end pipeline drives (see audiotrove.pipelines.e2e).
+    if train:
+        from audiotrove.training import get_trainer
+        from audiotrove.training.base import TrainingConfig
+
+        model_out = output_dir / "model"
+        trainer = get_trainer(
+            train_framework,
+            TrainingConfig(
+                manifest_path=str(output_dir / "filelist.txt"),
+                output_dir=str(model_out),
+                model_name=train_framework,
+                epochs=epochs,
+                batch_size=batch_size,
+                device=device,
+                num_gpus=num_gpus,
+            ),
+        )
+        trainer.validate_manifest()
+        summary["train_summary"] = trainer.train()
+        summary["model_path"] = trainer.export(str(model_out / "final.pt"))
+
+    return summary
+
+

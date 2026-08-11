@@ -6,8 +6,10 @@ importing this package stays cheap and dependency-free.
 """
 
 from audiotrove.training.base import BaseTrainer, TrainingConfig
+from audiotrove.training.dataloader import RustAudioDataset
 
-__all__ = ["BaseTrainer", "TrainingConfig", "get_trainer"]
+__all__ = ["BaseTrainer", "TrainingConfig", "RustAudioDataset", "get_trainer"]
+
 
 
 def get_trainer(framework: str, config: "TrainingConfig") -> "BaseTrainer":
