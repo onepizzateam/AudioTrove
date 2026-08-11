@@ -109,3 +109,71 @@ def to_device(tensor: "torch.Tensor", device: "torch.device") -> "torch.Tensor":
     if tensor.is_floating_point() and device.type == "cuda":
         return tensor.to(device=device, dtype=torch.float16)
     return tensor.to(device=device)
+
+
+def ipex_available() -> bool:
+    """Return True when Intel Extension for PyTorch (IPEX) is importable.
+
+    IPEX accelerates CPU (and Intel GPU) training/inference. It is entirely
+    optional; every caller must work without it.
+    """
+    if not HAS_TORCH:
+        return False
+    try:
+        import intel_extension_for_pytorch  # noqa: F401
+    except Exception:  # noqa: BLE001 - ImportError or partial/broken installs
+        return False
+    return True
+
+
+def bf16_supported(device: "torch.device") -> bool:
+    """Return True when bfloat16 is supported on ``device``.
+
+    - CUDA: supported on compute capability >= 8.0 (Ampere and newer).
+    - CPU: supported when the build reports an AVX512 capability, which is the
+      practical requirement for usable bf16 throughput.
+    - MPS: not supported.
+    """
+    if not HAS_TORCH:
+        return False
+
+    device = device if isinstance(device, torch.device) else torch.device(device)
+
+    if device.type == "cuda":
+        if not torch.cuda.is_available():
+            return False
+        try:
+            major, _minor = torch.cuda.get_device_capability(device)
+            return major >= 8
+        except Exception:  # noqa: BLE001
+            return False
+
+    if device.type == "cpu":
+        try:
+            cap = torch.backends.cpu.get_cpu_capability()
+            return "avx512" in str(cap).lower()
+        except Exception:  # noqa: BLE001 - attribute missing on older torch
+            return False
+
+    # MPS and any other backend
+    return False
+
+
+def optimal_dtype(device: "torch.device") -> "torch.dtype":
+    """Pick the best training/inference dtype for ``device``.
+
+    Preference order: bfloat16 (when supported) > float16 (CUDA only) > float32.
+    bf16 is preferred over fp16 for its wider dynamic range and greater training
+    stability; fp16 is used on CUDA GPUs that predate bf16 support; everything
+    else stays in fp32.
+    """
+    if not HAS_TORCH:
+        raise RuntimeError("torch is required for optimal_dtype()")
+
+    device = device if isinstance(device, torch.device) else torch.device(device)
+
+    if bf16_supported(device):
+        return torch.bfloat16
+    if device.type == "cuda":
+        return torch.float16
+    return torch.float32

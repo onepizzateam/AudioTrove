@@ -42,6 +42,11 @@ def test_training_config_defaults(tmp_path):
     assert cfg.num_gpus == 1
     assert cfg.mixed_precision is True
     assert cfg.resume_from is None
+    assert cfg.gradient_checkpointing is True
+    assert cfg.save_every_n_epochs == 10
+    assert cfg.torch_threads is None
+    assert cfg.dataloader_workers == 0
+
 
 
 def test_validate_manifest_missing_raises(tmp_path):
@@ -78,8 +83,9 @@ def test_validate_manifest_passes(tmp_path):
     trainer.validate_manifest()  # should not raise
 
 
-def test_train_invokes_backend(tmp_path, monkeypatch):
-    """train() should call f5_tts.train.train with a device config."""
+def test_train_invokes_owned_loop(tmp_path, monkeypatch):
+    """train() should delegate to the owned train_f5tts loop, forwarding config."""
+    import audiotrove.training.f5tts_loop as loop_mod
     from audiotrove.training.f5tts import F5TTSTrainer
 
     captured = {}
@@ -88,11 +94,7 @@ def test_train_invokes_backend(tmp_path, monkeypatch):
         captured.update(cfg)
         return {"best_loss": 0.04}
 
-    fake_train_mod = types.ModuleType("f5_tts.train")
-    fake_train_mod.train = _fake_train
-    fake_pkg = types.ModuleType("f5_tts")
-    monkeypatch.setitem(sys.modules, "f5_tts", fake_pkg)
-    monkeypatch.setitem(sys.modules, "f5_tts.train", fake_train_mod)
+    monkeypatch.setattr(loop_mod, "train_f5tts", _fake_train)
 
     manifest = _make_manifest(tmp_path, n_clips=10)
     trainer = F5TTSTrainer(_config(manifest, tmp_path / "out", device="cpu"))
@@ -100,23 +102,29 @@ def test_train_invokes_backend(tmp_path, monkeypatch):
     assert metrics["best_loss"] == 0.04
     assert captured["device"] == "cpu"
     assert captured["epochs"] == 100
+    assert captured["manifest_path"] == str(manifest)
+    # The generic framework key "f5tts" is mapped to the base model preset.
+    assert captured["model_name"] == "F5TTS_Base"
+    # New TrainingConfig fields must be forwarded to the loop.
+    assert captured["gradient_checkpointing"] is True
+    assert captured["save_every_n_epochs"] == 10
 
 
-def test_train_multi_gpu_sets_num_gpus(tmp_path, monkeypatch):
+def test_train_forwards_num_gpus(tmp_path, monkeypatch):
+    import audiotrove.training.f5tts_loop as loop_mod
     from audiotrove.training.f5tts import F5TTSTrainer
 
     captured = {}
 
-    fake_train_mod = types.ModuleType("f5_tts.train")
-    fake_train_mod.train = lambda **cfg: captured.update(cfg) or {}
-    fake_pkg = types.ModuleType("f5_tts")
-    monkeypatch.setitem(sys.modules, "f5_tts", fake_pkg)
-    monkeypatch.setitem(sys.modules, "f5_tts.train", fake_train_mod)
+    monkeypatch.setattr(
+        loop_mod, "train_f5tts", lambda **cfg: captured.update(cfg) or {}
+    )
 
     manifest = _make_manifest(tmp_path, n_clips=10)
     trainer = F5TTSTrainer(_config(manifest, tmp_path / "out", device="cpu", num_gpus=4))
     trainer.train()
     assert captured["num_gpus"] == 4
+
 
 
 def test_export_copies_newest_checkpoint(tmp_path):

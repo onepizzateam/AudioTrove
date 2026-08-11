@@ -144,11 +144,18 @@ class LocalExecutor:
         checkpoint_path: Optional[str] = None,
         num_workers: int = 1,
         device: str = "cpu",
+        torch_threads: Optional[int] = None,
+        dataloader_threads: Optional[int] = None,
     ):
         self.pipeline = pipeline
         self.checkpoint_path = checkpoint_path
         self.num_workers = num_workers
         self.device = device
+        # Thread budgets used to avoid oversubscription when the parallel
+        # executor and torch's intra-op pools would otherwise both try to use
+        # every core. ``None`` means "pick a sensible default at run time".
+        self.torch_threads = torch_threads
+        self.dataloader_threads = dataloader_threads
         self._conn = None
         # Optional Rust-backed checkpoint store (audiotrove_core). When present
         # it provides lock-free, batched SQLite writes that lift the parallel
@@ -253,6 +260,29 @@ class LocalExecutor:
             return
         self._move_pipeline_to_device(resolved)
 
+    def _find_vad_filter(self):
+        """Return the pipeline's SileroVADFilter if a batched pre-pass is safe.
+
+        Batching is only applied when there is no fan-out transformer in the
+        pipeline: fan-out (e.g. VADSegmenter) changes the document set mid-stream
+        so a doc_id-keyed cache computed up front would not line up. Returns
+        ``None`` when batching should be skipped, in which case the executor
+        keeps its original streaming behaviour.
+        """
+        from audiotrove.base import AudioFanOutTransformer
+
+        try:
+            from audiotrove.filters.vad import SileroVADFilter
+        except Exception:  # noqa: BLE001 - VAD deps optional
+            return None
+
+        if any(isinstance(b, AudioFanOutTransformer) for b in self.pipeline):
+            return None
+        for block in self.pipeline:
+            if isinstance(block, SileroVADFilter) and hasattr(block, "filter_batch"):
+                return block
+        return None
+
     def run(self, reader, writer) -> dict:
         """Run the pipeline over documents produced by `reader`.
 
@@ -282,7 +312,34 @@ class LocalExecutor:
         self._maybe_move_to_device()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
-        for doc in reader:
+        # When the pipeline contains a batchable Silero VAD filter (and no
+        # fan-out), run VAD as a single batched pre-pass. This acquires the
+        # Silero inference lock once for the whole input instead of once per
+        # document, which is the dominant cost of the sequential path.
+        vad_filter = self._find_vad_filter()
+        vad_cache = None
+        if vad_filter is not None:
+            pending = []
+            for doc in reader:
+                if doc is None:
+                    stats["skipped"] += 1
+                    continue
+                if self._is_processed(doc.doc_id):
+                    stats["skipped"] += 1
+                    continue
+                pending.append(doc)
+
+            vad_cache = {}
+            batch_size = getattr(vad_filter, "BATCH_SIZE", 32)
+            for i in range(0, len(pending), batch_size):
+                chunk = pending[i : i + batch_size]
+                for d, passed in zip(chunk, vad_filter.filter_batch(chunk)):
+                    vad_cache[d.doc_id] = passed
+            doc_source = pending
+        else:
+            doc_source = reader
+
+        for doc in doc_source:
             if doc is None:
                 stats["skipped"] += 1
                 continue
@@ -306,7 +363,11 @@ class LocalExecutor:
                     filter_error = False
                     for d in docs:
                         try:
-                            if block.filter(d):
+                            if block is vad_filter and vad_cache is not None:
+                                passed = vad_cache.get(d.doc_id, False)
+                            else:
+                                passed = block.filter(d)
+                            if passed:
                                 new_docs.append(d)
                         except Exception:  # noqa: BLE001
                             block_name = getattr(block, "name", block.__class__.__name__)
@@ -395,6 +456,18 @@ class LocalExecutor:
         self._init_db()
         self._maybe_move_to_device()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
+
+        # Cap torch's intra-op thread pool so it doesn't fight the executor's
+        # own worker processes/threads for cores. Default to half the machine
+        # when the caller hasn't specified an explicit budget.
+        total_cores = os.cpu_count() or 4
+        tt = self.torch_threads or max(1, total_cores // 2)
+        try:
+            import torch
+
+            torch.set_num_threads(tt)
+        except ImportError:
+            pass
 
         # Windows process workers cannot share the loaded torch model and four
         # independent Silero instances can terminate the pool under memory

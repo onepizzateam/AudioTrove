@@ -17,6 +17,9 @@ from audiotrove.document import AudioDocument
 SR = 16000
 
 def _make_transformer(hf_token: str = "hf_test", **kwargs):
+    # Diarization is an optional extra; skip (don't fail) when pyannote is
+    # absent, matching how the rest of the suite guards optional deps.
+    pytest.importorskip("pyannote.audio")
     from audiotrove.transformers.diarize import SpeakerDiarizationTransformer
     return SpeakerDiarizationTransformer(hf_token=hf_token, **kwargs)
 
