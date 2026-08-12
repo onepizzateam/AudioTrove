@@ -377,11 +377,15 @@ def test_checkpoint_wal_mode_and_vacuum(tmp_path):
     executor = LocalExecutor(pipeline=[], checkpoint_path=str(db_path))
     executor._init_db()
 
-    # Check WAL mode
+    # Check WAL mode and synchronous setting
     cur = executor._conn.cursor()
     cur.execute("PRAGMA journal_mode")
     mode = cur.fetchone()[0]
     assert mode.lower() == "wal"
+
+    cur.execute("PRAGMA synchronous")
+    sync = cur.fetchone()[0]
+    assert sync == 1
 
     # Insert rows and close
     executor._mark_processed("doc1")

@@ -591,13 +591,14 @@ def checkpoint_vacuum(db_path):
     """Vacuum a SQLite checkpoint database to reclaim disk space."""
     import sqlite3
 
-    conn = sqlite3.connect(str(db_path))
     try:
-        cur = conn.cursor()
-        cur.execute("VACUUM")
-        conn.commit()
-    finally:
-        conn.close()
+        conn = sqlite3.connect(str(db_path), isolation_level=None)
+        try:
+            conn.execute("VACUUM")
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        raise click.ClickException(f"Failed to vacuum database: {exc}") from exc
     console.print(f"[green]Successfully vacuumed {db_path}[/green]")
 
 
