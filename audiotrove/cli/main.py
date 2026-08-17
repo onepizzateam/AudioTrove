@@ -585,5 +585,22 @@ def serve(config_path, host, port):
         raise click.ClickException(str(exc)) from exc
 
 
+@cli.command("checkpoint-vacuum")
+@click.argument("db_path", type=click.Path(exists=True, dir_okay=False))
+def checkpoint_vacuum(db_path):
+    """Vacuum a SQLite checkpoint database to reclaim disk space."""
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(str(db_path), isolation_level=None)
+        try:
+            conn.execute("VACUUM")
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        raise click.ClickException(f"Failed to vacuum database: {exc}") from exc
+    console.print(f"[green]Successfully vacuumed {db_path}[/green]")
+
+
 if __name__ == "__main__":
     cli()
