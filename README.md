@@ -8,6 +8,17 @@
 
 ## What AudioTrove is
 
+AudioTrove makes two honest promises:
+
+1. **Curate (proven):** deterministically turn raw audio into a resumable,
+   RAM-bounded, training-ready corpus with VAD, trimming, SNR and manifests.
+2. **Train (CPU-real):** Piper is the first-class CPU training path. F5-TTS,
+   StyleTTS2, Matcha and other GPU-oriented trainers remain behind optional
+   extras, but are not the CPU story.
+
+Kokoro-82M is an optional CPU inference/preview and synthetic-augmentation
+utility only; it is not a training framework.
+
 Building a TTS corpus from raw audio is repetitive and easy to get wrong:
 On a single CPU worker it processes LibriSpeech dev-clean (5.4 hours, 2,703 clips) at 6.3× real-time.
 files need decoding and normalization, silence must be removed consistently,
@@ -21,9 +32,9 @@ WAVs plus LJSpeech- and F5-TTS-compatible manifests. Every processed document
 is recorded in SQLite, giving repeated runs deterministic skip behavior rather
 than an ad-hoc ffmpeg loop that must be manually reconciled.
 
-AudioTrove is deliberately a curation tool, not a transcription service or a
-model trainer. It produces inspectable training inputs and manifests that a
-training framework can consume. The detailed component contracts live in
+AudioTrove is deliberately CPU-first. It produces inspectable training inputs
+and manifests alongside the CPU-real Piper training path. The detailed
+component contracts live in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Features

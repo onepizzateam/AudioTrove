@@ -3,6 +3,9 @@ from rich.console import Console
 from rich.table import Table
 from pathlib import Path
 import logging
+import importlib.util
+import os
+import platform
 
 from audiotrove import __version__
 
@@ -15,11 +18,57 @@ console = Console()
     "-v", "--verbose", is_flag=True, default=False, help="Enable verbose (DEBUG) logging."
 )
 def cli(verbose):
-    """AudioTrove: Open-source audio data curation pipeline."""
+    """AudioTrove: CPU-first audio curation and training pipeline."""
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.WARNING)
+
+
+def _doctor_snapshot():
+    """Collect lightweight local environment facts for the doctor command."""
+    try:
+        import psutil
+        available_ram = psutil.virtual_memory().available
+    except (ImportError, AttributeError, OSError):
+        available_ram = None
+    optional_components = {
+        "Rust extension": ("audiotrove_core",),
+        "transcribe": ("whisper", "faster_whisper"),
+        "train-piper": ("piper_train",),
+        "infer": ("kokoro",),
+        "enhance": ("deepfilternet",),
+        "diarize": ("pyannote.audio",),
+        "embed-dedup": ("faiss", "speechbrain"),
+    }
+    def module_available(module):
+        try:
+            return importlib.util.find_spec(module) is not None
+        except (ImportError, ModuleNotFoundError, ValueError):
+            return False
+
+    installed = {
+        name: any(module_available(module) for module in modules)
+        for name, modules in optional_components.items()
+    }
+    return {"python": platform.python_version(), "cpu_cores": os.cpu_count() or 1,
+            "available_ram": available_ram, "components": installed}
+
+
+@cli.command()
+def doctor():
+    """Report local CPU, memory, Rust, and optional-extra availability."""
+    snapshot = _doctor_snapshot()
+    table = Table(title="AudioTrove Doctor")
+    table.add_column("Check", style="cyan")
+    table.add_column("Value", style="magenta")
+    table.add_row("Python", snapshot["python"])
+    table.add_row("CPU cores", str(snapshot["cpu_cores"]))
+    ram = snapshot["available_ram"]
+    table.add_row("Available RAM", f"{ram / (1024 ** 3):.2f} GiB" if ram else "unavailable")
+    for name, present in snapshot["components"].items():
+        table.add_row(name, "installed" if present else "not installed")
+    console.print(table)
 
 
 @cli.command()

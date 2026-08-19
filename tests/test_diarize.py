@@ -1,7 +1,6 @@
 """Tests for SpeakerDiarizationTransformer."""
 
 import pickle
-import types
 from unittest.mock import MagicMock, patch
 
 import numpy as np

@@ -45,6 +45,18 @@ def test_cli_group_version():
     assert __version__ in result.output
 
 
+def test_doctor_smoke(monkeypatch):
+    """Doctor reports basic host facts without requiring optional extras."""
+    monkeypatch.setattr("audiotrove.cli.main.os.cpu_count", lambda: 4)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["doctor"])
+    assert result.exit_code == 0
+    assert "AudioTrove Doctor" in result.output
+    assert "CPU cores" in result.output
+    assert "Rust extension" in result.output
+    assert "transcribe" in result.output
+
+
 def test_cli_group_help():
     """Test main CLI help."""
     runner = CliRunner()
