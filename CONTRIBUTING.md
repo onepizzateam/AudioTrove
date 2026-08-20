@@ -104,3 +104,10 @@ warnings on third-party stubs are acceptable.
 - [ ] New components have focused pass and fail unit tests
 - [ ] New optional dependencies are added to the correct extra in `pyproject.toml`
 - [ ] `ARCHITECTURE.md` updated if any component contracts or pipeline ordering changes
+# Optional Rust acceleration
+
+The Rust IO extension is optional. From the repository root, build it in a
+virtual environment with `maturin develop --manifest-path
+rust/audiotrove-core/Cargo.toml` (or produce a wheel with `maturin build
+--release --manifest-path rust/audiotrove-core/Cargo.toml`). Without the
+extension, AudioTrove automatically uses its pure-Python resampling fallback.

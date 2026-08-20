@@ -24,6 +24,7 @@ except Exception:  # noqa: BLE001  # pragma: no cover - optional, we'll raise if
 
 from audiotrove.document import AudioDocument
 from audiotrove.utils.hashing import make_doc_id
+from audiotrove.io.rust_backend import resample as _resample
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +85,7 @@ class LocalAudioReader:
             if audio.ndim > 1:
                 audio = audio.mean(axis=1)
             if sr != self.target_sr:
-                num_samples = int(len(audio) * float(self.target_sr) / float(sr))
-                audio = np.interp(
-                    np.linspace(0, len(audio), num_samples, endpoint=False),
-                    np.arange(len(audio)),
-                    audio,
-                ).astype(np.float32)
+                audio = _resample(audio, sr, self.target_sr)
 
             duration = float(len(audio)) / float(self.target_sr)
             if duration < self.min_duration:
@@ -146,13 +142,8 @@ class LocalAudioReader:
                 # Fallback to simple numpy resampling if torchaudio resampler fails
                 import numpy as _np
 
-                num_samples = int(waveform.shape[-1] * float(self.target_sr) / float(sr))
                 audio_np = waveform.squeeze(0).numpy()
-                resampled = _np.interp(
-                    _np.linspace(0, len(audio_np), num_samples, endpoint=False),
-                    _np.arange(len(audio_np)),
-                    audio_np,
-                )
+                resampled = _resample(audio_np, sr, self.target_sr)
                 import torch
 
                 waveform = torch.from_numpy(resampled.astype(_np.float32)).unsqueeze(0)
