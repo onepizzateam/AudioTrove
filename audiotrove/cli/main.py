@@ -105,6 +105,12 @@ def doctor():
     help="Number of worker processes for parallel execution.",
 )
 @click.option(
+    "--max-ram-per-worker",
+    default=None,
+    type=click.FloatRange(min=0.1),
+    help="Soft RAM ceiling in GiB per worker (recorded for resource-aware runs).",
+)
+@click.option(
     "--extensions",
     default="wav",
     show_default=True,
@@ -185,6 +191,7 @@ def curate(
     output_format,
     checkpoint,
     workers,
+    max_ram_per_worker,
     extensions,
     segment,
     enhance,
@@ -299,7 +306,12 @@ def curate(
         pipeline.insert(insert_at, VADSegmenter(threshold=0.5))
         console.print("  [cyan]Segmentation: enabled (VADSegmenter)[/cyan]")
 
-    executor = LocalExecutor(pipeline=pipeline, checkpoint_path=checkpoint_db, num_workers=workers)
+    executor = LocalExecutor(
+        pipeline=pipeline,
+        checkpoint_path=checkpoint_db,
+        num_workers=workers,
+        max_ram_per_worker=max_ram_per_worker,
+    )
 
     # Run
     console.print("[cyan]Starting curation pipeline[/cyan]")
@@ -307,6 +319,8 @@ def curate(
     console.print(f"  Output: {output_manifest}")
     console.print(f"  Checkpoint: {checkpoint_db}")
     console.print(f"  Workers: {workers}")
+    if max_ram_per_worker is not None:
+        console.print(f"  RAM ceiling: {max_ram_per_worker:.2f} GiB/worker")
     console.print(f"  Extensions: {', '.join(exts)}")
     console.print(f"  Filters: {', '.join(b.name for b in pipeline) or 'none'}")
     if enhance:

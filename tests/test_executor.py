@@ -129,6 +129,28 @@ def test_executor_with_checkpoint(tmp_path):
     assert stats2["skipped"] == 3
 
 
+def test_checkpoint_schema_version_is_added_to_legacy_database(tmp_path):
+    """Opening a pre-versioned checkpoint preserves processed rows and adds v1."""
+    import sqlite3
+
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE processed (doc_id TEXT PRIMARY KEY, processed_at TIMESTAMP)")
+    conn.execute("INSERT INTO processed (doc_id) VALUES ('legacy-doc')")
+    conn.commit()
+    conn.close()
+
+    from audiotrove.executor.local import LocalExecutor
+
+    executor = LocalExecutor([], str(db))
+    executor._init_db()
+    assert executor._is_processed("legacy-doc")
+    assert executor._conn.execute(
+        "SELECT value FROM metadata WHERE key = 'schema_version'"
+    ).fetchone() == ("1",)
+    executor._conn.close()
+
+
 def test_executor_skips_none_documents():
     """LocalExecutor should skip None documents from reader."""
     import numpy as np

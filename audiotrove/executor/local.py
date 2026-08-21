@@ -134,10 +134,12 @@ class LocalExecutor:
     the pipeline and return results.
     """
 
-    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None, num_workers: int = 1):
+    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None, num_workers: int = 1,
+                 max_ram_per_worker: Optional[float] = None):
         self.pipeline = pipeline
         self.checkpoint_path = checkpoint_path
         self.num_workers = num_workers
+        self.max_ram_per_worker = max_ram_per_worker
         self._conn = None
 
     def _init_db(self):
@@ -147,12 +149,17 @@ class LocalExecutor:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(path))
         cur = self._conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
         cur.execute("""
         CREATE TABLE IF NOT EXISTS processed (
             doc_id TEXT PRIMARY KEY,
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+        cur.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        cur.execute("SELECT value FROM metadata WHERE key = 'schema_version'")
+        if cur.fetchone() is None:
+            cur.execute("INSERT INTO metadata (key, value) VALUES ('schema_version', '1')")
         self._conn.commit()
 
     def _is_processed(self, doc_id: str) -> bool:
