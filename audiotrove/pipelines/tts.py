@@ -25,6 +25,7 @@ def tts_pipeline(
     checkpoint_path: str | None = None,
     transcribe: bool = False,
     whisper_model: str = "base",
+    whisper_backend: str = "faster",
     diarize: bool = False,
     hf_token: str | None = None,
     diarize_min_speakers: int | None = None,
@@ -46,6 +47,7 @@ def tts_pipeline(
         checkpoint_path: Optional SQLite checkpoint path for resumable runs.
         transcribe: Transcribe kept clips with Whisper.
         whisper_model: Whisper model size to use when transcribing.
+        whisper_backend: ``faster`` (int8 CPU) or legacy ``openai`` backend.
         diarize: Run speaker diarization before VAD (requires audiotrove[diarize]).
         hf_token: HuggingFace token required by pyannote models.
         diarize_min_speakers: Optional lower bound passed to the diarization pipeline.
@@ -96,7 +98,7 @@ def tts_pipeline(
     if transcribe:
         from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
 
-        pipeline.append(WhisperTranscriber(model_name=whisper_model))
+        pipeline.append(WhisperTranscriber(model_name=whisper_model, backend=whisper_backend))
     executor = LocalExecutor(
         pipeline=pipeline,
         checkpoint_path=checkpoint_path or str(output_dir / "checkpoint.db"),

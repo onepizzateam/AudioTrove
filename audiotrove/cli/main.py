@@ -161,6 +161,13 @@ def doctor():
     help="Whisper model size: tiny, base, small, medium, large.",
 )
 @click.option(
+    "--tts-whisper-backend",
+    type=click.Choice(["openai", "faster"]),
+    default="faster",
+    show_default=True,
+    help="CPU transcription backend.",
+)
+@click.option(
     "--tts-diarize",
     is_flag=True,
     default=False,
@@ -201,6 +208,7 @@ def curate(
     tts_snr_min,
     tts_transcribe,
     tts_whisper_model,
+    tts_whisper_backend,
     tts_diarize,
     tts_hf_token,
     tts_diarize_min_speakers,
@@ -247,6 +255,7 @@ def curate(
             checkpoint_path=checkpoint,
             transcribe=tts_transcribe,
             whisper_model=tts_whisper_model,
+            whisper_backend=tts_whisper_backend,
             diarize=tts_diarize,
             hf_token=tts_hf_token,
             diarize_min_speakers=tts_diarize_min_speakers,
