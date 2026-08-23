@@ -112,4 +112,5 @@ def tts_pipeline(
         "filtered": stats["skipped"],
         "total_duration_seconds": round(exporter.total_duration_seconds, 4),
         "output_files": exporter.output_files,
+        "qc_report": str(output_dir / "qc_report.json"),
     }

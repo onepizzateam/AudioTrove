@@ -267,6 +267,7 @@ def curate(
         console.print(f"  Duration: {summary['total_duration_seconds']:.2f}s")
         for output_file in summary["output_files"]:
             console.print(f"  Output: {output_file}")
+        console.print(f"  QC report: {summary['qc_report']}")
         return
 
     # Build pipeline
