@@ -55,6 +55,15 @@ def _doctor_snapshot():
             "available_ram": available_ram, "components": installed}
 
 
+def _doctor_recommendations(cpu_cores, available_ram):
+    """Return conservative worker/RAM defaults from host resources."""
+    if available_ram is None:
+        return {"workers": max(1, min(cpu_cores, 4)), "ram_per_worker_gib": 1.0}
+    ram_gib = available_ram / (1024 ** 3)
+    workers = max(1, min(cpu_cores, int(ram_gib // 1.0), 8))
+    return {"workers": workers, "ram_per_worker_gib": round(ram_gib / workers * 0.75, 2)}
+
+
 @cli.command()
 def doctor():
     """Report local CPU, memory, Rust, and optional-extra availability."""
@@ -68,6 +77,9 @@ def doctor():
     table.add_row("Available RAM", f"{ram / (1024 ** 3):.2f} GiB" if ram else "unavailable")
     for name, present in snapshot["components"].items():
         table.add_row(name, "installed" if present else "not installed")
+    recommendation = _doctor_recommendations(snapshot["cpu_cores"], snapshot["available_ram"])
+    table.add_row("Recommended workers", str(recommendation["workers"]))
+    table.add_row("Recommended RAM/worker", f"{recommendation['ram_per_worker_gib']:.2f} GiB")
     console.print(table)
 
 

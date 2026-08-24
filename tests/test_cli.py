@@ -57,6 +57,14 @@ def test_doctor_smoke(monkeypatch):
     assert "transcribe" in result.output
 
 
+def test_doctor_recommendations_matrix():
+    from audiotrove.cli.main import _doctor_recommendations
+
+    assert _doctor_recommendations(2, 2 * 1024**3)["workers"] == 2
+    assert _doctor_recommendations(16, 64 * 1024**3)["workers"] == 8
+    assert _doctor_recommendations(8, None)["workers"] == 4
+
+
 def test_cli_group_help():
     """Test main CLI help."""
     runner = CliRunner()
