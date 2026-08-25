@@ -84,6 +84,35 @@ def doctor():
 
 
 @cli.command()
+@click.option("--framework", type=click.Choice(["piper", "f5tts", "styletts2", "matcha"]),
+              default="piper", show_default=True)
+@click.option("--manifest", required=True, type=click.Path(exists=True))
+@click.option("--output-dir", required=True, type=click.Path())
+def train(framework, manifest, output_dir):
+    """Train a voice model; Piper is the CPU-first framework."""
+    if framework != "piper":
+        raise click.ClickException("Only Piper is on the CPU-first path; other frameworks are parked.")
+    from audiotrove.training.piper import PiperTrainer
+    trainer = PiperTrainer(manifest, output_dir)
+    click.echo(f"Validated {sum(1 for _ in trainer.iter_records())} manifest records.")
+    try:
+        trainer.train()
+    except NotImplementedError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@cli.command()
+@click.argument("text")
+@click.argument("output_path", type=click.Path())
+@click.option("--voice", default="af_heart", show_default=True)
+def preview(text, output_path, voice):
+    """Synthesize a short CPU Kokoro preview (inference only)."""
+    from audiotrove.inference.preview import synthesize
+    synthesize(text, output_path, voice)
+    click.echo(f"Preview written to {output_path}")
+
+
+@cli.command()
 @click.argument("input_path")
 @click.argument("output_path")
 @click.option(
