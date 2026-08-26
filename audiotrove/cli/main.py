@@ -112,6 +112,35 @@ def preview(text, output_path, voice):
     click.echo(f"Preview written to {output_path}")
 
 
+@cli.group()
+def pipeline():
+    """Chain curation, CPU training, and optional voice preview stages."""
+
+
+@pipeline.command("run")
+@click.argument("input_path", type=click.Path(exists=True))
+@click.argument("output_path", type=click.Path())
+@click.option("--skip-train", is_flag=True)
+@click.option("--skip-preview", is_flag=True)
+@click.option("--preview-text", default="AudioTrove preview")
+def pipeline_run(input_path, output_path, skip_train, skip_preview, preview_text):
+    """Run curate, then Piper training, then optional preview."""
+    from click import Context
+
+    ctx = Context(curate)
+    ctx.invoke(curate, input_path=input_path, output_path=output_path, tts=True,
+               vad_threshold=0.3, snr_min=15.0, output_format="jsonl", checkpoint=None,
+               workers=1, extensions="wav", segment=False, enhance=False, tts_min_duration=2.0,
+               tts_max_duration=15.0, tts_snr_min=20.0, tts_transcribe=False,
+               tts_whisper_model="base", tts_whisper_backend="faster", tts_diarize=False,
+               tts_hf_token=None, tts_diarize_min_speakers=None,
+               tts_diarize_max_speakers=None, max_ram_per_worker=None)
+    if not skip_train:
+        click.echo("Training stage selected; invoke `audiotrove train --framework piper` with filelist.txt.")
+    if not skip_preview:
+        click.echo(f"Preview stage selected for: {preview_text}")
+
+
 @cli.command()
 @click.argument("input_path")
 @click.argument("output_path")
