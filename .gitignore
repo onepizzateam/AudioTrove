@@ -72,3 +72,6 @@ coverage.xml
 
 demo_out/
 C:/tmp/
+
+# Optional Rust extension build output
+rust/**/target/
