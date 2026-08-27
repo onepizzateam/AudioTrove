@@ -71,6 +71,7 @@ coverage.xml
 *.egg-info/
 
 demo_out/
+output-day8/
 C:/tmp/
 
 # Optional Rust extension build output
