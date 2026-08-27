@@ -16,7 +16,7 @@ from audiotrove.cli.main import cli
 
 def test_version_attribute():
     """Test __version__ attribute is set correctly."""
-    assert __version__ == "0.1.1"
+    assert __version__ == "0.1.2"
 
 
 def test_curate_command_help():
