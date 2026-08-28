@@ -81,6 +81,17 @@ cd AudioTrove
 pip install -e ".[dev]"
 ```
 
+### Optional native/runtime setup
+
+The optional Piper training extra builds native eSpeak components on Windows.
+It requires Visual Studio C++ Build Tools and a short temporary build path;
+the current development machine has the compiler but its pip temporary path is
+too long for CMake's Windows object-file limit.
+
+Kokoro preview requires a compatible Python interpreter. Use Python 3.10 or
+3.11 in a separate environment when the main installation is on Python 3.13;
+Python 3.10/3.11 is not currently installed on the development machine.
+
 Verify the CLI is available:
 
 ```bash
