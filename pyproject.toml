@@ -74,7 +74,7 @@ omit = ["audiotrove/filters/enhance.py"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-exclude = ["vendor"]
+exclude = ["vendor", ".venv-kokoro-test"]
 
 [tool.mypy]
 python_version = "3.10"
