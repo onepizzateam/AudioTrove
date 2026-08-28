@@ -386,12 +386,14 @@ def curate(
         pipeline.insert(insert_at, VADSegmenter(threshold=0.5))
         console.print("  [cyan]Segmentation: enabled (VADSegmenter)[/cyan]")
 
-    executor = LocalExecutor(
-        pipeline=pipeline,
-        checkpoint_path=checkpoint_db,
-        num_workers=workers,
-        max_ram_per_worker=max_ram_per_worker,
-    )
+    executor_kwargs = {
+        "pipeline": pipeline,
+        "checkpoint_path": checkpoint_db,
+        "num_workers": workers,
+    }
+    if max_ram_per_worker is not None:
+        executor_kwargs["max_ram_per_worker"] = max_ram_per_worker
+    executor = LocalExecutor(**executor_kwargs)
 
     # Run
     console.print("[cyan]Starting curation pipeline[/cyan]")

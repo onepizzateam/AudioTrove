@@ -98,7 +98,12 @@ def tts_pipeline(
     if transcribe:
         from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
 
-        pipeline.append(WhisperTranscriber(model_name=whisper_model, backend=whisper_backend))
+        try:
+            pipeline.append(WhisperTranscriber(model_name=whisper_model, backend=whisper_backend))
+        except TypeError as exc:
+            if "backend" not in str(exc):
+                raise
+            pipeline.append(WhisperTranscriber(model_name=whisper_model))
     executor = LocalExecutor(
         pipeline=pipeline,
         checkpoint_path=checkpoint_path or str(output_dir / "checkpoint.db"),
