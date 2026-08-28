@@ -2,10 +2,14 @@
 
 ## Overview
 
-AudioTrove curates local audio into training-ready datasets. It discovers audio,
+AudioTrove curates local audio into training-ready datasets and supports the
+CPU-real Piper training path. It discovers audio,
 normalizes it into `AudioDocument` objects, applies ordered filters and
-transformers, and writes manifests or TTS WAV/manifest outputs. It is not a
-transcription service, a model trainer, or a distributed orchestration system.
+transformers, and writes manifests or TTS WAV/manifest outputs. Piper is the
+CPU-first trainer; F5-TTS, StyleTTS2, Matcha and other GPU-oriented/multi-trainer
+modules are not on the CPU-first path and are kept for future GPU rollout.
+Kokoro is inference-only. AudioTrove is not a transcription service or
+distributed orchestration system.
 
 ## Repository layout
 
@@ -236,3 +240,5 @@ with one long worker run; the benchmark wrappers use 200-file chunks and
 counts and wall time but reports `total_duration_seconds` as 0.0; derive kept
 duration from exported WAVs. A TODO in `tts_pipeline` defers speaker
 consistency filtering until a lightweight backend is available.
+
+The requested >500 MB-file peak-RSS measurement was not measured — no representative file available in the execution environment.

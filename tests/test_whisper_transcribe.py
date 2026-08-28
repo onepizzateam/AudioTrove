@@ -62,3 +62,33 @@ def test_tts_pipeline_accepts_transcribe_flag():
     sig = inspect.signature(tts_pipeline)
     assert "transcribe" in sig.parameters
     assert "whisper_model" in sig.parameters
+
+
+def test_whisper_backends_emit_schema_identical_metadata(tmp_path, monkeypatch):
+    """Both installed backends write the same metadata.csv columns and types."""
+    pytest.importorskip("faster_whisper")
+    pytest.importorskip("whisper")
+    from audiotrove.exporters.tts_manifest import TTSManifestExporter
+    from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
+
+    fake_faster = types.ModuleType("faster_whisper")
+    fake_faster.WhisperModel = object
+    fake_openai = types.ModuleType("whisper")
+    fake_openai.transcribe = lambda model, audio, **kwargs: {"text": "same text"}
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_faster)
+    monkeypatch.setitem(sys.modules, "whisper", fake_openai)
+
+    outputs = []
+    for backend in ("faster", "openai"):
+        doc = _make_doc()
+        transformer = WhisperTranscriber.__new__(WhisperTranscriber)
+        transformer.backend = backend
+        transformer._model = types.SimpleNamespace(
+            transcribe=lambda audio, language=None: ([types.SimpleNamespace(text="same text")], None)
+        )
+        transformer.transform(doc)
+        out = tmp_path / backend
+        TTSManifestExporter(str(out), export_format=["ljspeech"]).write(doc)
+        row = (out / "metadata.csv").read_text(encoding="utf-8").strip().split("|")
+        outputs.append([type(value).__name__ for value in row])
+    assert outputs[0] == outputs[1] == ["str", "str", "str"]

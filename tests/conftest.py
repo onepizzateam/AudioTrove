@@ -7,6 +7,20 @@ from pathlib import Path
 from audiotrove.document import AudioDocument
 from audiotrove.utils.hashing import make_doc_id
 
+
+@pytest.fixture(autouse=True)
+def prevent_network_model_downloads(monkeypatch):
+    """Keep the suite offline: VAD production fallback handles this failure."""
+    try:
+        import torch
+    except ImportError:
+        return
+
+    def fail_fast(*_args, **_kwargs):
+        raise RuntimeError("network model downloads are disabled in tests")
+
+    monkeypatch.setattr(torch.hub, "load", fail_fast)
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 

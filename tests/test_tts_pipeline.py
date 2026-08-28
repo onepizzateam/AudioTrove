@@ -322,7 +322,7 @@ def test_tts_pipeline_diarize_writes_per_speaker_ids_to_manifest(tmp_path, monke
        patch("audiotrove.transformers.diarize.Path.unlink"):
         from audiotrove.pipelines.tts import tts_pipeline
 
-        summary = tts_pipeline(
+        tts_pipeline(
             str(tmp_path),
             str(out),
             min_duration=1.0,

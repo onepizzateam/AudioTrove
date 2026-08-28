@@ -10,6 +10,29 @@ import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
+CHECKPOINT_SCHEMA_VERSION = "2"
+
+
+def upgrade_checkpoint_schema(connection: sqlite3.Connection) -> None:
+    """Upgrade a legacy checkpoint in place without changing processed rows."""
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    row = connection.execute(
+        "SELECT value FROM metadata WHERE key = 'schema_version'"
+    ).fetchone()
+    if row is None:
+        # Databases without this row are v1. The v2 marker is additive-only.
+        connection.execute(
+            "INSERT INTO metadata (key, value) VALUES ('schema_version', ?)",
+            (CHECKPOINT_SCHEMA_VERSION,),
+        )
+    elif row[0] != CHECKPOINT_SCHEMA_VERSION:
+        connection.execute(
+            "UPDATE metadata SET value = ? WHERE key = 'schema_version'",
+            (CHECKPOINT_SCHEMA_VERSION,),
+        )
+    connection.commit()
 
 
 def _worker_process_doc(doc, pipeline):
@@ -129,52 +152,20 @@ class LocalExecutor:
     When num_workers=1 (default), runs sequentially (backward compatible).
     When num_workers>1, uses ProcessPoolExecutor for parallel document processing.
 
-    The main process always owns the SQLite checkpoint and performs all writes
+    The main process always owns the SQLite connection and performs all writes
     to avoid concurrent write issues. Workers only process documents through
     the pipeline and return results.
-
-    When the optional ``audiotrove_core`` Rust extension is installed the
-    checkpoint is backed by a lock-free store that supports batched commits;
-    otherwise the built-in sqlite3 path is used transparently.
     """
 
-    def __init__(
-        self,
-        pipeline: list,
-        checkpoint_path: Optional[str] = None,
-        num_workers: int = 1,
-        device: str = "cpu",
-        torch_threads: Optional[int] = None,
-        dataloader_threads: Optional[int] = None,
-    ):
+    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None, num_workers: int = 1,
+                 max_ram_per_worker: Optional[float] = None):
         self.pipeline = pipeline
         self.checkpoint_path = checkpoint_path
         self.num_workers = num_workers
-        self.device = device
-        # Thread budgets used to avoid oversubscription when the parallel
-        # executor and torch's intra-op pools would otherwise both try to use
-        # every core. ``None`` means "pick a sensible default at run time".
-        self.torch_threads = torch_threads
-        self.dataloader_threads = dataloader_threads
+        self.max_ram_per_worker = max_ram_per_worker
         self._conn = None
-        # Optional Rust-backed checkpoint store (audiotrove_core). When present
-        # it provides lock-free, batched SQLite writes that lift the parallel
-        # scaling ceiling. When absent we transparently use the sqlite3 path.
-        self._store = None
-        self._use_rust_checkpoint = False
-        if checkpoint_path:
-            try:
-                from audiotrove_core import CheckpointStore
-
-                self._store = CheckpointStore(checkpoint_path)
-                self._use_rust_checkpoint = True
-            except ImportError:
-                self._use_rust_checkpoint = False
 
     def _init_db(self):
-        if self._use_rust_checkpoint:
-            # Rust CheckpointStore initialises its own schema on construction.
-            return
         if not self.checkpoint_path:
             return
         path = Path(self.checkpoint_path)
@@ -182,18 +173,15 @@ class LocalExecutor:
         self._conn = sqlite3.connect(str(path))
         cur = self._conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA synchronous=NORMAL")
         cur.execute("""
         CREATE TABLE IF NOT EXISTS processed (
             doc_id TEXT PRIMARY KEY,
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        self._conn.commit()
+        upgrade_checkpoint_schema(self._conn)
 
     def _is_processed(self, doc_id: str) -> bool:
-        if self._use_rust_checkpoint:
-            return self._store.is_processed(doc_id) if self._store else False
         if not self._conn:
             return False
         cur = self._conn.cursor()
@@ -201,10 +189,6 @@ class LocalExecutor:
         return cur.fetchone() is not None
 
     def _mark_processed(self, doc_id: str) -> None:
-        if self._use_rust_checkpoint:
-            if self._store:
-                self._store.mark_processed(doc_id)
-            return
         if not self._conn:
             return
         cur = self._conn.cursor()
@@ -214,76 +198,6 @@ class LocalExecutor:
         except sqlite3.IntegrityError:
             # already recorded
             pass
-
-    def _mark_batch(self, doc_ids: list) -> None:
-        """Persist a batch of completed doc_ids in a single transaction.
-
-        This is the key throughput fix for the parallel executor: rather than
-        committing once per document, all completed ids in a chunk of futures
-        are committed together. Uses the Rust ``mark_batch`` when available and
-        an executemany transaction otherwise.
-        """
-        if not doc_ids:
-            return
-        if self._use_rust_checkpoint:
-            if self._store:
-                self._store.mark_batch(list(doc_ids))
-            return
-        if not self._conn:
-            return
-        cur = self._conn.cursor()
-        cur.executemany(
-            "INSERT OR IGNORE INTO processed (doc_id) VALUES (?)",
-            [(doc_id,) for doc_id in doc_ids],
-        )
-        self._conn.commit()
-
-    def _move_pipeline_to_device(self, device) -> None:
-        """Move every GPU-aware pipeline block onto ``device``."""
-        from audiotrove.base import GPUFilter, GPUTransformer
-
-        for block in self.pipeline:
-            if isinstance(block, (GPUFilter, GPUTransformer)):
-                try:
-                    block.to(device)
-                except Exception:  # noqa: BLE001 - never let device move crash the run
-                    logger.debug("Failed to move %s to %s", block, device, exc_info=True)
-
-    def _maybe_move_to_device(self) -> None:
-        """Resolve and apply the configured device to GPU-aware blocks."""
-        if not self.device or self.device == "cpu":
-            return
-        try:
-            from audiotrove.gpu.device import get_device
-
-            resolved = get_device(self.device)
-        except Exception:  # noqa: BLE001
-            logger.debug("Device resolution failed; staying on CPU", exc_info=True)
-            return
-        self._move_pipeline_to_device(resolved)
-
-    def _find_vad_filter(self):
-        """Return the pipeline's SileroVADFilter if a batched pre-pass is safe.
-
-        Batching is only applied when there is no fan-out transformer in the
-        pipeline: fan-out (e.g. VADSegmenter) changes the document set mid-stream
-        so a doc_id-keyed cache computed up front would not line up. Returns
-        ``None`` when batching should be skipped, in which case the executor
-        keeps its original streaming behaviour.
-        """
-        from audiotrove.base import AudioFanOutTransformer
-
-        try:
-            from audiotrove.filters.vad import SileroVADFilter
-        except Exception:  # noqa: BLE001 - VAD deps optional
-            return None
-
-        if any(isinstance(b, AudioFanOutTransformer) for b in self.pipeline):
-            return None
-        for block in self.pipeline:
-            if isinstance(block, SileroVADFilter) and hasattr(block, "filter_batch"):
-                return block
-        return None
 
     def run(self, reader, writer) -> dict:
         """Run the pipeline over documents produced by `reader`.
@@ -311,37 +225,9 @@ class LocalExecutor:
         from audiotrove.base import AudioFanOutTransformer
 
         self._init_db()
-        self._maybe_move_to_device()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
 
-        # When the pipeline contains a batchable Silero VAD filter (and no
-        # fan-out), run VAD as a single batched pre-pass. This acquires the
-        # Silero inference lock once for the whole input instead of once per
-        # document, which is the dominant cost of the sequential path.
-        vad_filter = self._find_vad_filter()
-        vad_cache = None
-        if vad_filter is not None:
-            pending = []
-            for doc in reader:
-                if doc is None:
-                    stats["skipped"] += 1
-                    continue
-                if self._is_processed(doc.doc_id):
-                    stats["skipped"] += 1
-                    continue
-                pending.append(doc)
-
-            vad_cache = {}
-            batch_size = getattr(vad_filter, "BATCH_SIZE", 32)
-            for i in range(0, len(pending), batch_size):
-                chunk = pending[i : i + batch_size]
-                for d, passed in zip(chunk, vad_filter.filter_batch(chunk)):
-                    vad_cache[d.doc_id] = passed
-            doc_source = pending
-        else:
-            doc_source = reader
-
-        for doc in doc_source:
+        for doc in reader:
             if doc is None:
                 stats["skipped"] += 1
                 continue
@@ -365,11 +251,7 @@ class LocalExecutor:
                     filter_error = False
                     for d in docs:
                         try:
-                            if block is vad_filter and vad_cache is not None:
-                                passed = vad_cache.get(d.doc_id, False)
-                            else:
-                                passed = block.filter(d)
-                            if passed:
+                            if block.filter(d):
                                 new_docs.append(d)
                         except Exception:  # noqa: BLE001
                             block_name = getattr(block, "name", block.__class__.__name__)
@@ -450,26 +332,11 @@ class LocalExecutor:
     def _run_parallel(self, reader, writer) -> dict:
         """Parallel processing using ProcessPoolExecutor.
 
-        Main process owns the checkpoint. Workers process documents through the
-        pipeline and return results. Completed doc_ids are committed in batches
-        (one transaction per BATCH futures) which is the key throughput fix for
-        parallel scaling.
+        Main process owns SQLite connection. Workers process documents through
+        the pipeline and return results. Main process writes and checkpoints.
         """
         self._init_db()
-        self._maybe_move_to_device()
         stats = {"processed": 0, "kept": 0, "skipped": 0, "errors": 0, "errors_by_filter": {}}
-
-        # Cap torch's intra-op thread pool so it doesn't fight the executor's
-        # own worker processes/threads for cores. Default to half the machine
-        # when the caller hasn't specified an explicit budget.
-        total_cores = os.cpu_count() or 4
-        tt = self.torch_threads or max(1, total_cores // 2)
-        try:
-            import torch
-
-            torch.set_num_threads(tt)
-        except ImportError:
-            pass
 
         # Windows process workers cannot share the loaded torch model and four
         # independent Silero instances can terminate the pool under memory
@@ -510,8 +377,6 @@ class LocalExecutor:
         executor_kwargs = {"max_workers": self.num_workers}
         if executor_type is ProcessPoolExecutor:
             executor_kwargs.update(initializer=_worker_init, initargs=(preload_silero,))
-
-        BATCH = 64
         with executor_type(**executor_kwargs) as executor:
             # Submit all tasks
             future_to_doc = {
@@ -519,46 +384,38 @@ class LocalExecutor:
                 for doc in pending_docs
             }
 
-            # Drain futures in chunks and commit the checkpoint once per chunk
-            # rather than once per document (single SQLite transaction per BATCH).
-            futures = list(future_to_doc.keys())
-            for i in range(0, len(futures), BATCH):
-                chunk = futures[i : i + BATCH]
-                completed_ids = []
-                for future in as_completed(chunk):
-                    try:
-                        docs, keep, error, error_block, rejected = future.result()
+            # Process results as they complete (main process handles writes)
+            for future in as_completed(future_to_doc):
+                try:
+                    docs, keep, error, error_block, rejected = future.result()
 
-                        stats["processed"] += 1
-                        stats["skipped"] += rejected
+                    stats["processed"] += 1
+                    stats["skipped"] += rejected
 
-                        if error:
-                            for doc in docs:
-                                logger.exception(f"Error processing {doc.source_path}: {error}")
-                            stats["errors"] += 1
-                            if error_block and error_block not in stats["errors_by_filter"]:
-                                stats["errors_by_filter"][error_block] = 0
-                            if error_block:
-                                stats["errors_by_filter"][error_block] += 1
-
-                        if keep and docs and not error:
-                            for doc in docs:
-                                writer.write(doc)
-                                completed_ids.append(doc.doc_id)
-                            stats["kept"] += len(docs)
-                        elif not rejected:
-                            stats["skipped"] += len(docs) or 1
-
-                        if not error:
-                            # Fan-out children are not reader inputs. Persist the
-                            # original source ID so a resume skips the whole input.
-                            completed_ids.append(future_to_doc[future].doc_id)
-
-                    except Exception:  # noqa: BLE001
-                        logger.exception("Worker task failed")
+                    if error:
+                        for doc in docs:
+                            logger.exception(f"Error processing {doc.source_path}: {error}")
                         stats["errors"] += 1
+                        if error_block and error_block not in stats["errors_by_filter"]:
+                            stats["errors_by_filter"][error_block] = 0
+                        if error_block:
+                            stats["errors_by_filter"][error_block] += 1
 
-                # One checkpoint transaction for the whole chunk.
-                self._mark_batch(completed_ids)
+                    if keep and docs and not error:
+                        for doc in docs:
+                            writer.write(doc)
+                            self._mark_processed(doc.doc_id)
+                        stats["kept"] += len(docs)
+                    elif not rejected:
+                        stats["skipped"] += len(docs) or 1
+
+                    if not error:
+                        # Fan-out children are not reader inputs. Persist the
+                        # original source ID so a resume skips the whole input.
+                        self._mark_processed(future_to_doc[future].doc_id)
+
+                except Exception:  # noqa: BLE001
+                    logger.exception("Worker task failed")
+                    stats["errors"] += 1
 
         return stats

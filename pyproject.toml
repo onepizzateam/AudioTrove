@@ -41,52 +41,18 @@ s3 = ["s3fs>=2023.1.0"]
 gcs = ["gcsfs>=2023.1.0"]
 diarize = ["pyannote.audio>=3.1.0"]
 embed-dedup = ["faiss-cpu>=1.7.4", "speechbrain>=1.0.0"]
-transcribe = ["openai-whisper>=20231117"]
-# NEW GPU and training/inference extras
-gpu = [
-    "torch>=2.0.0",
-]
-transcribe-gpu = [
-    "faster-whisper>=1.0.0",
-]
-train-f5tts = [
-    "f5-tts>=1.0.0",
-]
-train-styletts2 = [
-    "styletts2>=0.1.0",
-]
-train-piper = [
-    "piper-train>=1.0.0",
-]
-train-matcha = [
-    "matcha-tts>=0.2.0",
-]
-infer = [
-    "faster-whisper>=1.0.0",
-    "f5-tts>=1.0.0",
-    "aiohttp>=3.9.0",
-]
-rust = [
-    # maturin builds the Rust extension
-    # actual build: `pip install maturin && maturin develop`
-]
-all = [
-    "audiotrove[gpu]",
-    "audiotrove[transcribe-gpu]",
-    "audiotrove[train-f5tts]",
-    "audiotrove[infer]",
-    "audiotrove[diarize]",
-    "audiotrove[enhance]",
-]
+transcribe = ["faster-whisper>=1.0.0", "openai-whisper>=20231117"]
+train-piper = ["piper-tts[train] @ git+https://github.com/OHF-voice/piper1-gpl.git"]
+infer = ["kokoro"]
 dev = [
     "pytest",
+    "pytest-timeout",
     "pytest-cov",
     "ruff==0.15.22",
     "mypy",
     "click[testing]",
     "scipy>=1.10.0",
     "torchcodec",
-    "maturin>=1.5",
 ]
 
 [project.urls]
@@ -100,25 +66,15 @@ audiotrove = "audiotrove.cli.main:cli"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --cov=audiotrove --cov-report=term-missing"
+timeout = 60
 
 [tool.coverage.run]
-omit = [
-    "audiotrove/filters/enhance.py",
-    "audiotrove/inference/server.py",
-    "audiotrove/training/gpu.py",
-    "audiotrove/training/styletts2.py",
-    "audiotrove/training/piper.py",
-    "audiotrove/training/matcha.py",
-]
-
-[tool.maturin]
-python-source = "."
-manifest-path = "audiotrove-core/Cargo.toml"
-features = ["pyo3/extension-module"]
+omit = ["audiotrove/filters/enhance.py"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = ["vendor", ".venv-kokoro-test"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -136,3 +92,4 @@ version = {attr = "audiotrove.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["audiotrove*"]
+

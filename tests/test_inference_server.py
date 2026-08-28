@@ -43,7 +43,6 @@ def test_model_spec_unknown_raises(tmp_path):
 
 
 def test_get_session_lazy_loads_tts(tmp_path, monkeypatch):
-    from audiotrove.inference import server as server_mod
     from audiotrove.inference.server import AudioTroveServer
 
     loaded = {"count": 0}

@@ -1,0 +1,21 @@
+name: CPU install matrix
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["pyproject.toml", ".github/workflows/install-matrix.yml"]
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        extras: ["", "transcribe,train-piper,infer"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ".${{ matrix.extras && format('[{0}]', matrix.extras) || '' }}"
+      - run: audiotrove doctor
+      - run: python -c "import torch; assert not torch.cuda.is_available(); print(torch.__version__)"

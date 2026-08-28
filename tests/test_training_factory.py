@@ -1,6 +1,5 @@
 """Tests for the training factory and non-F5 trainer wrappers."""
 
-import sys
 import types
 
 import pytest

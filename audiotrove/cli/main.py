@@ -3,9 +3,14 @@ from rich.console import Console
 from rich.table import Table
 from pathlib import Path
 import logging
+import importlib.util
+import os
+import platform
+import json
 
 from audiotrove import __version__
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 
@@ -15,11 +20,185 @@ console = Console()
     "-v", "--verbose", is_flag=True, default=False, help="Enable verbose (DEBUG) logging."
 )
 def cli(verbose):
-    """AudioTrove: Open-source audio data curation pipeline."""
+    """AudioTrove: CPU-first audio curation and training pipeline."""
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.WARNING)
+
+
+def _doctor_snapshot():
+    """Collect lightweight local environment facts for the doctor command."""
+    try:
+        import psutil
+        available_ram = psutil.virtual_memory().available
+    except (ImportError, AttributeError, OSError):
+        available_ram = None
+    optional_components = {
+        "Rust extension": ("audiotrove_core",),
+        "transcribe": ("whisper", "faster_whisper"),
+        "train-piper": ("piper.train", "piper_train"),
+        "infer": ("kokoro",),
+        "enhance": ("deepfilternet",),
+        "diarize": ("pyannote.audio",),
+        "embed-dedup": ("faiss", "speechbrain"),
+    }
+    def module_available(module):
+        try:
+            return importlib.util.find_spec(module) is not None
+        except (ImportError, ModuleNotFoundError, ValueError):
+            return False
+
+    installed = {
+        name: any(module_available(module) for module in modules)
+        for name, modules in optional_components.items()
+    }
+    return {"python": platform.python_version(), "cpu_cores": os.cpu_count() or 1,
+            "available_ram": available_ram, "components": installed}
+
+
+def _doctor_recommendations(cpu_cores, available_ram):
+    """Return conservative worker/RAM defaults from host resources."""
+    if available_ram is None:
+        return {"workers": max(1, min(cpu_cores, 4)), "ram_per_worker_gib": 1.0}
+    ram_gib = available_ram / (1024 ** 3)
+    workers = max(1, min(cpu_cores, int(ram_gib // 1.0), 8))
+    return {"workers": workers, "ram_per_worker_gib": round(ram_gib / workers * 0.75, 2)}
+
+
+def _doctor_warnings(snapshot, recommendation):
+    """Return warnings for optional models that exceed the worker budget."""
+    warnings = []
+    if snapshot["components"].get("transcribe") and snapshot["available_ram"] is not None:
+        required = recommendation["workers"] * 0.5 * (1024 ** 3)
+        if snapshot["available_ram"] < required:
+            warnings.append(
+                "transcribe extra: faster-whisper base is estimated at ~0.50 GiB "
+                "per worker and may exceed available RAM at the recommended worker count"
+            )
+    return warnings
+
+
+@cli.command()
+def doctor():
+    """Report local CPU, memory, Rust, and optional-extra availability."""
+    snapshot = _doctor_snapshot()
+    table = Table(title="AudioTrove Doctor")
+    table.add_column("Check", style="cyan")
+    table.add_column("Value", style="magenta")
+    table.add_row("Python", snapshot["python"])
+    table.add_row("CPU cores", str(snapshot["cpu_cores"]))
+    ram = snapshot["available_ram"]
+    table.add_row("Available RAM", f"{ram / (1024 ** 3):.2f} GiB" if ram else "unavailable")
+    for name, present in snapshot["components"].items():
+        table.add_row(name, "installed" if present else "not installed")
+    recommendation = _doctor_recommendations(snapshot["cpu_cores"], snapshot["available_ram"])
+    table.add_row("Recommended workers", str(recommendation["workers"]))
+    table.add_row("Recommended RAM/worker", f"{recommendation['ram_per_worker_gib']:.2f} GiB")
+    console.print(table)
+    for warning in _doctor_warnings(snapshot, recommendation):
+        console.print(f"[yellow]Warning: {warning}[/yellow]")
+
+
+@cli.command()
+@click.option("--framework", type=click.Choice(["piper", "f5tts", "styletts2", "matcha"]),
+              default="piper", show_default=True)
+@click.option("--manifest", required=True, type=click.Path(exists=True))
+@click.option("--output-dir", required=True, type=click.Path())
+def train(framework, manifest, output_dir):
+    """Train a voice model; Piper is the CPU-first framework."""
+    if framework != "piper":
+        raise click.ClickException("Only Piper is on the CPU-first path; other frameworks are parked.")
+    from audiotrove.training.piper import PiperTrainer
+    trainer = PiperTrainer(manifest, output_dir)
+    click.echo(f"Validated {sum(1 for _ in trainer.iter_records())} manifest records.")
+    trainer.train()
+
+
+@cli.command()
+@click.argument("text")
+@click.argument("output_path", type=click.Path())
+@click.option("--voice", default="af_heart", show_default=True)
+def preview(text, output_path, voice):
+    """Synthesize a short CPU Kokoro preview (inference only)."""
+    from audiotrove.inference.preview import synthesize
+    synthesize(text, output_path, voice)
+    click.echo(f"Preview written to {output_path}")
+
+
+@cli.command("augment")
+@click.argument("manifest", type=click.Path(exists=True))
+@click.argument("output_dir", type=click.Path())
+@click.option("--voice", default="af_heart", show_default=True)
+@click.option("--limit", type=click.IntRange(min=1), default=None)
+def augment(manifest, output_dir, voice, limit):
+    """Opt-in Kokoro synthetic augmentation for a tab-separated TTS manifest."""
+    from audiotrove.inference.preview import augment_manifest
+    outputs = augment_manifest(manifest, output_dir, voice, limit)
+    click.echo(f"Generated {len(outputs)} synthetic clips in {output_dir}")
+
+
+@cli.group()
+def pipeline():
+    """Chain curation, CPU training, and optional voice preview stages."""
+
+
+@pipeline.command("run")
+@click.argument("input_path", type=click.Path(exists=True))
+@click.argument("output_path", type=click.Path())
+@click.option("--skip-train", is_flag=True)
+@click.option("--skip-preview", is_flag=True)
+@click.option("--preview-text", default="AudioTrove preview")
+@click.option("--preview-voice", default="af_heart", show_default=True)
+def pipeline_run(input_path, output_path, skip_train, skip_preview, preview_text, preview_voice):
+    """Run curate, then Piper training, then optional preview."""
+    from click import Context
+
+    output_dir = Path(output_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    state_path = output_dir / "pipeline_state.json"
+
+    def load_state():
+        try:
+            return json.loads(state_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def save_state(stage):
+        temporary = state_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"stage": stage}), encoding="utf-8")
+        os.replace(temporary, state_path)
+
+    state = load_state()
+    ctx = Context(curate)
+    if state.get("stage") not in {"curated", "trained", "previewed"}:
+        ctx.invoke(curate, input_path=input_path, output_path=output_path, tts=True,
+                   vad_threshold=0.3, snr_min=15.0, output_format="jsonl",
+                   checkpoint=str(output_dir / "checkpoint.db"),
+                   workers=1, extensions="wav", segment=False, enhance=False, tts_min_duration=2.0,
+                   tts_max_duration=15.0, tts_snr_min=20.0, tts_transcribe=False,
+                   tts_whisper_model="base", tts_whisper_backend="faster", tts_diarize=False,
+                   tts_hf_token=None, tts_diarize_min_speakers=None,
+                   tts_diarize_max_speakers=None, max_ram_per_worker=None)
+        save_state("curated")
+    if not skip_train:
+        from audiotrove.training.piper import PiperTrainer
+
+        filelist = output_dir / "filelist.txt"
+        if not filelist.exists():
+            raise click.ClickException(f"Curation did not produce {filelist}")
+        if state.get("stage") not in {"trained", "previewed"}:
+            PiperTrainer(str(filelist), str(output_dir / "piper")).train()
+            save_state("trained")
+        click.echo(f"Training complete: {output_dir / 'piper'}")
+    if not skip_preview:
+        from audiotrove.inference.preview import synthesize
+
+        preview_path = output_dir / "preview.wav"
+        if state.get("stage") != "previewed":
+            synthesize(preview_text, str(preview_path), preview_voice)
+            save_state("previewed")
+        click.echo(f"Preview complete: {preview_path}")
 
 
 @cli.command()
@@ -54,6 +233,12 @@ def cli(verbose):
     type=click.IntRange(min=1),
     show_default=True,
     help="Number of worker processes for parallel execution.",
+)
+@click.option(
+    "--max-ram-per-worker",
+    default=None,
+    type=click.FloatRange(min=0.1),
+    help="Soft RAM ceiling in GiB per worker (recorded for resource-aware runs).",
 )
 @click.option(
     "--extensions",
@@ -106,11 +291,11 @@ def cli(verbose):
     help="Whisper model size: tiny, base, small, medium, large.",
 )
 @click.option(
-    "--device",
-    type=click.Choice(["auto", "cuda", "mps", "cpu"]),
-    default="cpu",
+    "--tts-whisper-backend",
+    type=click.Choice(["openai", "faster"]),
+    default="faster",
     show_default=True,
-    help="Compute device for GPU-aware filters/transformers.",
+    help="CPU transcription backend.",
 )
 @click.option(
     "--tts-diarize",
@@ -143,6 +328,7 @@ def curate(
     output_format,
     checkpoint,
     workers,
+    max_ram_per_worker,
     extensions,
     segment,
     enhance,
@@ -152,13 +338,12 @@ def curate(
     tts_snr_min,
     tts_transcribe,
     tts_whisper_model,
-    device,
+    tts_whisper_backend,
     tts_diarize,
     tts_hf_token,
     tts_diarize_min_speakers,
     tts_diarize_max_speakers,
 ):
-
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
 
     Applies VAD and SNR filters, writes JSONL manifest.
@@ -200,19 +385,34 @@ def curate(
             checkpoint_path=checkpoint,
             transcribe=tts_transcribe,
             whisper_model=tts_whisper_model,
-            device=device,
+            whisper_backend=tts_whisper_backend,
             diarize=tts_diarize,
             hf_token=tts_hf_token,
             diarize_min_speakers=tts_diarize_min_speakers,
             diarize_max_speakers=tts_diarize_max_speakers,
+            max_ram_per_worker=max_ram_per_worker,
         )
-
         console.print("[cyan]TTS curation pipeline complete[/cyan]")
         console.print(f"  Kept: {summary['kept']}")
         console.print(f"  Filtered: {summary['filtered']}")
         console.print(f"  Duration: {summary['total_duration_seconds']:.2f}s")
         for output_file in summary["output_files"]:
             console.print(f"  Output: {output_file}")
+        console.print(f"  QC report: {summary['qc_report']}")
+        try:
+            qc_data = json.loads(Path(summary["qc_report"]).read_text(encoding="utf-8"))
+            qc_table = Table(title="QC Summary")
+            qc_table.add_column("Metric", style="cyan")
+            qc_table.add_column("Value", style="magenta")
+            qc_table.add_row("Clips", str(qc_data.get("clips", 0)))
+            qc_table.add_row("Clipped", str(qc_data.get("clipped", 0)))
+            qc_table.add_row("Silence-only", str(qc_data.get("silence_only", 0)))
+            durations = qc_data.get("duration_seconds", {})
+            qc_table.add_row("Duration min/max", f"{durations.get('min')} / {durations.get('max')}")
+            qc_table.add_row("SNR samples", str(len(qc_data.get("snr_db", []))))
+            console.print(qc_table)
+        except (OSError, TypeError, ValueError):
+            logger.debug("Could not render QC summary", exc_info=True)
         return
 
     # Build pipeline
@@ -243,7 +443,7 @@ def curate(
         # If input is a file, just use that single file
         patterns = [str(input_p)]
 
-    reader = LocalAudioReader(patterns)
+    reader = LocalAudioReader(patterns, max_ram_per_worker=max_ram_per_worker)
     output_manifest = output_p / "manifest.jsonl"
     writer = JSONLWriter(str(output_manifest))
 
@@ -261,7 +461,14 @@ def curate(
         pipeline.insert(insert_at, VADSegmenter(threshold=0.5))
         console.print("  [cyan]Segmentation: enabled (VADSegmenter)[/cyan]")
 
-    executor = LocalExecutor(pipeline=pipeline, checkpoint_path=checkpoint_db, num_workers=workers)
+    executor_kwargs = {
+        "pipeline": pipeline,
+        "checkpoint_path": checkpoint_db,
+        "num_workers": workers,
+    }
+    if max_ram_per_worker is not None:
+        executor_kwargs["max_ram_per_worker"] = max_ram_per_worker
+    executor = LocalExecutor(**executor_kwargs)
 
     # Run
     console.print("[cyan]Starting curation pipeline[/cyan]")
@@ -269,6 +476,8 @@ def curate(
     console.print(f"  Output: {output_manifest}")
     console.print(f"  Checkpoint: {checkpoint_db}")
     console.print(f"  Workers: {workers}")
+    if max_ram_per_worker is not None:
+        console.print(f"  RAM ceiling: {max_ram_per_worker:.2f} GiB/worker")
     console.print(f"  Extensions: {', '.join(exts)}")
     console.print(f"  Filters: {', '.join(b.name for b in pipeline) or 'none'}")
     if enhance:
@@ -359,247 +568,6 @@ def inspect(input_path, extensions, limit):
     for fmt, cnt in sorted(format_counts.items()):
         table.add_row(f"Format: .{fmt}", str(cnt))
     console.print(table)
-
-
-@cli.command()
-@click.argument("manifest_path")
-@click.argument("output_path")
-@click.option(
-    "--framework",
-    type=click.Choice(["f5tts", "styletts2", "piper", "matcha"]),
-    default="f5tts",
-    show_default=True,
-    help="Training framework.",
-)
-@click.option("--epochs", default=100, type=int, show_default=True)
-@click.option("--batch-size", default=16, type=int, show_default=True)
-@click.option(
-    "--device",
-    type=click.Choice(["auto", "cuda", "mps", "cpu"]),
-    default="auto",
-    show_default=True,
-)
-@click.option("--num-gpus", default=1, type=int, show_default=True)
-@click.option("--resume-from", default=None, help="Checkpoint path to resume training from.")
-def train(manifest_path, output_path, framework, epochs, batch_size, device, num_gpus, resume_from):
-    """Fine-tune a TTS model from MANIFEST_PATH, writing to OUTPUT_PATH."""
-    from audiotrove.training import get_trainer
-    from audiotrove.training.base import TrainingConfig
-
-    config = TrainingConfig(
-        manifest_path=manifest_path,
-        output_dir=output_path,
-        model_name=framework,
-        epochs=epochs,
-        batch_size=batch_size,
-        device=device,
-        num_gpus=num_gpus,
-        resume_from=resume_from,
-    )
-    trainer = get_trainer(framework, config)
-    trainer.validate_manifest()
-    console.print(f"[cyan]Training {framework} ({epochs} epochs, device={device})[/cyan]")
-    try:
-        metrics = trainer.train()
-    except ImportError as exc:
-        raise click.ClickException(str(exc)) from exc
-    final = trainer.export(str(Path(output_path) / "final.pt"))
-    console.print(f"[green]Training complete. Model: {final}[/green]")
-    console.print(f"  Metrics: {metrics}")
-
-
-@cli.command()
-@click.option(
-    "--task",
-    type=click.Choice(["tts", "asr", "vc"]),
-    required=True,
-    help="Inference task type.",
-)
-@click.option("--family", default=None, help="Model family (e.g. f5tts, faster_whisper, seed_vc).")
-@click.option("--model", "model_path", default=None, help="Local model path.")
-@click.option("--text", default=None, help="TTS input text.")
-@click.option("--audio", "audio_path", default=None, help="ASR / VC source audio path.")
-@click.option("--voice-ref", default=None, help="TTS / VC reference voice path.")
-@click.option(
-    "--device",
-    type=click.Choice(["auto", "cuda", "mps", "cpu"]),
-    default="auto",
-    show_default=True,
-)
-@click.option("--out", "out_path", default=None, help="Output WAV (TTS/VC).")
-def infer(task, family, model_path, text, audio_path, voice_ref, device, out_path):
-    """Run a single inference request (TTS, ASR, or VC)."""
-    try:
-        if task == "tts":
-            from audiotrove.inference.tts import get_tts_session
-
-            session = get_tts_session(
-                family or "f5tts",
-                model_path=model_path,
-                device=device,
-                voice_ref=voice_ref,
-            )
-            with session:
-                result = session.run(text=text, voice_ref=voice_ref)
-            _write_or_print_audio(result, out_path)
-        elif task == "asr":
-            from audiotrove.inference.asr import get_asr_session
-
-            session = get_asr_session(
-                family or "faster_whisper",
-                model_path=model_path or "base",
-                device=device,
-            )
-            with session:
-                result = session.run(audio_path=audio_path)
-            console.print(result.text or "")
-        else:  # vc
-            from audiotrove.inference.vc import get_vc_session
-
-            session = get_vc_session(family or "seed_vc", model_path=model_path, device=device)
-            with session:
-                result = session.run(
-                    source_audio_path=audio_path, target_voice_path=voice_ref
-                )
-            _write_or_print_audio(result, out_path)
-    except ImportError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-
-def _write_or_print_audio(result, out_path):
-    """Write TTS/VC audio to ``out_path`` or report that no path was given."""
-    if out_path and result.audio is not None:
-        import soundfile as sf
-
-        sf.write(out_path, result.audio, result.sample_rate)
-        console.print(f"[green]Wrote {out_path}[/green]")
-    else:
-        console.print("[yellow]No --out path given; audio not written.[/yellow]")
-
-
-@cli.command()
-@click.argument("input_path")
-@click.argument("output_path")
-@click.option("--min-duration", default=2.0, type=float, show_default=True)
-@click.option("--max-duration", default=15.0, type=float, show_default=True)
-@click.option("--snr-min", default=20.0, type=float, show_default=True)
-@click.option("--extensions", default="wav", show_default=True)
-@click.option("--workers", default=1, type=click.IntRange(min=1), show_default=True)
-@click.option("--transcribe/--no-transcribe", default=True, show_default=True)
-@click.option("--whisper-model", default="base", show_default=True)
-@click.option("--train/--no-train", "do_train", default=True, show_default=True)
-@click.option("--framework", default="f5tts", show_default=True)
-@click.option("--epochs", default=100, type=int, show_default=True)
-@click.option("--batch-size", default=16, type=int, show_default=True)
-@click.option("--num-gpus", default=1, type=int, show_default=True)
-@click.option(
-    "--device",
-    type=click.Choice(["auto", "cuda", "mps", "cpu"]),
-    default="auto",
-    show_default=True,
-)
-@click.option("--validate/--no-validate", "do_validate", default=False, show_default=True)
-@click.option("--validate-text", default="Hello, this is a test of the trained voice.")
-@click.option("--validate-voice-ref", default=None)
-def run(
-    input_path,
-    output_path,
-    min_duration,
-    max_duration,
-    snr_min,
-    extensions,
-    workers,
-    transcribe,
-    whisper_model,
-    do_train,
-    framework,
-    epochs,
-    batch_size,
-    num_gpus,
-    device,
-    do_validate,
-    validate_text,
-    validate_voice_ref,
-):
-    """End-to-end: raw audio -> curated -> trained voice model."""
-    from audiotrove.pipelines.e2e import E2EConfig, e2e_pipeline
-
-    config = E2EConfig(
-        input_path=input_path,
-        output_path=output_path,
-        min_duration=min_duration,
-        max_duration=max_duration,
-        snr_min=snr_min,
-        extensions=[e.strip().lower() for e in extensions.split(",")],
-        workers=workers,
-        device=device,
-        transcribe=transcribe,
-        whisper_model=whisper_model,
-        train=do_train,
-        train_framework=framework,
-        epochs=epochs,
-        batch_size=batch_size,
-        num_gpus=num_gpus,
-        validate_inference=do_validate,
-        validate_text=validate_text,
-        validate_voice_ref=validate_voice_ref,
-    )
-    console.print("[bold cyan]AudioTrove end-to-end pipeline[/bold cyan]")
-    try:
-        result = e2e_pipeline(config)
-    except ImportError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    curate = result["curate_summary"]
-    console.print(f"  [1/3] Curated: {curate['kept']} clips kept, {curate['filtered']} filtered")
-    if result["train_summary"] is not None:
-        console.print("  [2/3] Training complete")
-    if result["validation_audio_path"]:
-        console.print(f"  [3/3] Validation: {result['validation_audio_path']}")
-    console.print("[green]Done.[/green]")
-
-
-@cli.command()
-@click.argument("config_path")
-@click.option("--host", default="127.0.0.1", show_default=True)
-@click.option("--port", default=8080, type=int, show_default=True)
-def serve(config_path, host, port):
-    """Start the AudioTrove inference HTTP server from CONFIG_PATH.
-
-    The server exposes inference endpoints without authentication. Run it only
-    on a trusted network or behind an authenticating reverse proxy.
-    """
-    from audiotrove.inference.server import AudioTroveServer
-
-    server = AudioTroveServer(config_path)
-    # CLI flags override config values when provided.
-    server.host = host
-    server.port = port
-    console.print(
-        f"[yellow]Serving without authentication on {host}:{port}. "
-        "Do not expose to untrusted networks.[/yellow]"
-    )
-    try:
-        server.run()
-    except ImportError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-
-@cli.command("checkpoint-vacuum")
-@click.argument("db_path", type=click.Path(exists=True, dir_okay=False))
-def checkpoint_vacuum(db_path):
-    """Vacuum a SQLite checkpoint database to reclaim disk space."""
-    import sqlite3
-
-    try:
-        conn = sqlite3.connect(str(db_path), isolation_level=None)
-        try:
-            conn.execute("VACUUM")
-        finally:
-            conn.close()
-    except sqlite3.Error as exc:
-        raise click.ClickException(f"Failed to vacuum database: {exc}") from exc
-    console.print(f"[green]Successfully vacuumed {db_path}[/green]")
 
 
 if __name__ == "__main__":

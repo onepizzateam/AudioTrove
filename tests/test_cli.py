@@ -16,8 +16,7 @@ from audiotrove.cli.main import cli
 
 def test_version_attribute():
     """Test __version__ attribute is set correctly."""
-    assert __version__ == "0.3.0"
-
+    assert __version__ == "0.1.2"
 
 
 def test_curate_command_help():
@@ -44,6 +43,36 @@ def test_cli_group_version():
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
     assert __version__ in result.output
+
+
+def test_doctor_smoke(monkeypatch):
+    """Doctor reports basic host facts without requiring optional extras."""
+    monkeypatch.setattr("audiotrove.cli.main.os.cpu_count", lambda: 4)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["doctor"])
+    assert result.exit_code == 0
+    assert "AudioTrove Doctor" in result.output
+    assert "CPU cores" in result.output
+    assert "Rust extension" in result.output
+    assert "transcribe" in result.output
+
+
+def test_doctor_recommendations_matrix():
+    from audiotrove.cli.main import _doctor_recommendations
+
+    assert _doctor_recommendations(4, 8 * 1024**3) == {"workers": 4, "ram_per_worker_gib": 1.5}
+    assert _doctor_recommendations(8, 16 * 1024**3) == {"workers": 8, "ram_per_worker_gib": 1.5}
+    assert _doctor_recommendations(16, 32 * 1024**3) == {"workers": 8, "ram_per_worker_gib": 3.0}
+    assert _doctor_recommendations(8, None)["workers"] == 4
+
+
+def test_doctor_warns_for_transcribe_ram_budget():
+    from audiotrove.cli.main import _doctor_recommendations, _doctor_warnings
+
+    snapshot = {"cpu_cores": 4, "available_ram": 0.25 * 1024**3,
+                "components": {"transcribe": True}}
+    recommendation = _doctor_recommendations(snapshot["cpu_cores"], snapshot["available_ram"])
+    assert _doctor_warnings(snapshot, recommendation)
 
 
 def test_cli_group_help():
@@ -185,6 +214,12 @@ def test_curate_workers_parameter():
 
         # Should accept workers parameter without error
         assert result.exit_code in [0, 1]
+
+
+def test_curate_help_includes_ram_ceiling():
+    result = CliRunner().invoke(cli, ["curate", "--help"])
+    assert result.exit_code == 0
+    assert "--max-ram-per-worker" in result.output
 
 
 def test_curate_rejects_non_positive_worker_count():
@@ -367,42 +402,3 @@ def test_cli_verbose_flag_short():
     result = runner.invoke(cli, ["-v", "--help"])
     # Should fail because -v consumes the argument, but it shows verbose flag works
     assert result.exit_code != 0 or "-v" in result.output
-
-
-def test_checkpoint_wal_mode_and_vacuum(tmp_path):
-    """Test LocalExecutor _init_db sets WAL mode and checkpoint-vacuum works."""
-    import sqlite3
-    from audiotrove.executor.local import LocalExecutor
-
-    db_path = tmp_path / "checkpoint.db"
-    executor = LocalExecutor(pipeline=[], checkpoint_path=str(db_path))
-    executor._init_db()
-
-    # Check WAL mode and synchronous setting
-    cur = executor._conn.cursor()
-    cur.execute("PRAGMA journal_mode")
-    mode = cur.fetchone()[0]
-    assert mode.lower() == "wal"
-
-    cur.execute("PRAGMA synchronous")
-    sync = cur.fetchone()[0]
-    assert sync == 1
-
-    # Insert rows and close
-    executor._mark_processed("doc1")
-    executor._mark_processed("doc2")
-    executor._conn.close()
-
-    # Test vacuum CLI command
-    runner = CliRunner()
-    result = runner.invoke(cli, ["checkpoint-vacuum", str(db_path)])
-    assert result.exit_code == 0
-    assert "vacuumed" in result.output
-
-    # Verify readable after vacuum
-    conn = sqlite3.connect(str(db_path))
-    cur = conn.cursor()
-    cur.execute("SELECT doc_id FROM processed")
-    rows = [r[0] for r in cur.fetchall()]
-    assert set(rows) == {"doc1", "doc2"}
-    conn.close()

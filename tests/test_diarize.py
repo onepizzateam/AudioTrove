@@ -1,13 +1,23 @@
 """Tests for SpeakerDiarizationTransformer."""
 
 import pickle
-import types
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from audiotrove.document import AudioDocument
+
+try:
+    import pyannote.audio  # noqa: F401
+    _PYANNOTE_AVAILABLE = True
+except ImportError:
+    _PYANNOTE_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not _PYANNOTE_AVAILABLE,
+    reason="pyannote.audio optional diarization extra is not installed",
+)
 
 
 # ---------------------------------------------------------------------------

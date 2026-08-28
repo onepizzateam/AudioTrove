@@ -25,19 +25,13 @@ def tts_pipeline(
     checkpoint_path: str | None = None,
     transcribe: bool = False,
     whisper_model: str = "base",
-    device: str = "cpu",
+    whisper_backend: str = "faster",
     diarize: bool = False,
     hf_token: str | None = None,
     diarize_min_speakers: int | None = None,
     diarize_max_speakers: int | None = None,
-    train: bool = False,
-    train_framework: str = "f5tts",
-    epochs: int = 100,
-    batch_size: int = 16,
-    num_gpus: int = 1,
+    max_ram_per_worker: float | None = None,
 ) -> dict:
-
-
     """Curate audio files and export TTS-ready training manifests.
 
     Args:
@@ -54,22 +48,15 @@ def tts_pipeline(
         checkpoint_path: Optional SQLite checkpoint path for resumable runs.
         transcribe: Transcribe kept clips with Whisper.
         whisper_model: Whisper model size to use when transcribing.
-        device: Compute device for GPU-aware blocks ("auto"/"cuda"/"mps"/"cpu").
+        whisper_backend: ``faster`` (int8 CPU) or legacy ``openai`` backend.
         diarize: Run speaker diarization before VAD (requires audiotrove[diarize]).
         hf_token: HuggingFace token required by pyannote models.
         diarize_min_speakers: Optional lower bound passed to the diarization pipeline.
         diarize_max_speakers: Optional upper bound passed to the diarization pipeline.
-        train: Fine-tune a voice model on the curated manifest after curation.
-        train_framework: Trainer to use when ``train`` is set ("f5tts", etc.).
-        epochs: Training epochs (only used when ``train`` is set).
-        batch_size: Training batch size (only used when ``train`` is set).
-        num_gpus: GPU count for training/DDP (only used when ``train`` is set).
 
     Returns:
         Summary with kept, filtered, total_duration_seconds, and output_files.
-        When ``train`` is set, also includes train_summary and model_path.
     """
-
     if export_format is None:
         export_format = ["ljspeech", "f5tts"]
     if extensions is None:
@@ -83,12 +70,13 @@ def tts_pipeline(
         if input_file.is_dir()
         else [str(input_file)]
     )
-    reader = LocalAudioReader(patterns, min_duration_seconds=0.0, max_duration_seconds=None)
+    reader = LocalAudioReader(patterns, min_duration_seconds=0.0, max_duration_seconds=None,
+                              max_ram_per_worker=max_ram_per_worker)
     pipeline = [
-        *([VADSegmenter(device=device)] if segment else []),
-        SileroVADFilter(min_speech_ratio=0.1, device=device),
-        SilenceTrimmingTransformer(padding_ms=padding_ms, device=device),
-        SNRFilter(min_snr_db=snr_min, device=device),
+        *([VADSegmenter()] if segment else []),
+        SileroVADFilter(min_speech_ratio=0.1),
+        SilenceTrimmingTransformer(padding_ms=padding_ms),
+        SNRFilter(min_snr_db=snr_min),
         DurationBucketFilter(min_duration, max_duration),
         # See issue #2: speaker consistency filter for TTS pipeline.
     ]
@@ -112,48 +100,24 @@ def tts_pipeline(
     if transcribe:
         from audiotrove.transformers.whisper_transcribe import WhisperTranscriber
 
-        pipeline.append(WhisperTranscriber(model_name=whisper_model, device=device))
+        try:
+            pipeline.append(WhisperTranscriber(model_name=whisper_model, backend=whisper_backend))
+        except TypeError as exc:
+            if "backend" not in str(exc):
+                raise
+            pipeline.append(WhisperTranscriber(model_name=whisper_model))
     executor = LocalExecutor(
         pipeline=pipeline,
         checkpoint_path=checkpoint_path or str(output_dir / "checkpoint.db"),
         num_workers=workers,
-        device=device,
     )
-
     exporter = TTSManifestExporter(str(output_dir), export_format=export_format)
     stats = executor.run(reader, exporter)
 
-    summary = {
+    return {
         "kept": stats["kept"],
         "filtered": stats["skipped"],
         "total_duration_seconds": round(exporter.total_duration_seconds, 4),
         "output_files": exporter.output_files,
+        "qc_report": str(output_dir / "qc_report.json"),
     }
-
-    # Optional post-curation fine-tuning. Off by default so curation-only callers
-    # keep the original return shape. Reuses the same trainer primitive the
-    # end-to-end pipeline drives (see audiotrove.pipelines.e2e).
-    if train:
-        from audiotrove.training import get_trainer
-        from audiotrove.training.base import TrainingConfig
-
-        model_out = output_dir / "model"
-        trainer = get_trainer(
-            train_framework,
-            TrainingConfig(
-                manifest_path=str(output_dir / "filelist.txt"),
-                output_dir=str(model_out),
-                model_name=train_framework,
-                epochs=epochs,
-                batch_size=batch_size,
-                device=device,
-                num_gpus=num_gpus,
-            ),
-        )
-        trainer.validate_manifest()
-        summary["train_summary"] = trainer.train()
-        summary["model_path"] = trainer.export(str(model_out / "final.pt"))
-
-    return summary
-
-

@@ -8,6 +8,17 @@
 
 ## What AudioTrove is
 
+AudioTrove makes two honest promises:
+
+1. **Curate (proven):** deterministically turn raw audio into a resumable,
+   RAM-bounded, training-ready corpus with VAD, trimming, SNR and manifests.
+2. **Train (CPU-real):** Piper is the first-class CPU training path. F5-TTS,
+   StyleTTS2, Matcha and other GPU-oriented trainers remain behind optional
+   extras, but are not the CPU story.
+
+Kokoro-82M is an optional CPU inference/preview and synthetic-augmentation
+utility only; it is not a training framework.
+
 Building a TTS corpus from raw audio is repetitive and easy to get wrong:
 On a single CPU worker it processes LibriSpeech dev-clean (5.4 hours, 2,703 clips) at 6.3× real-time.
 files need decoding and normalization, silence must be removed consistently,
@@ -21,9 +32,9 @@ WAVs plus LJSpeech- and F5-TTS-compatible manifests. Every processed document
 is recorded in SQLite, giving repeated runs deterministic skip behavior rather
 than an ad-hoc ffmpeg loop that must be manually reconciled.
 
-AudioTrove is deliberately a curation tool, not a transcription service or a
-model trainer. It produces inspectable training inputs and manifests that a
-training framework can consume. The detailed component contracts live in
+AudioTrove is deliberately CPU-first. It produces inspectable training inputs
+and manifests alongside the CPU-real Piper training path. The detailed
+component contracts live in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Features
@@ -69,6 +80,34 @@ git clone https://github.com/onepizzateam/AudioTrove.git
 cd AudioTrove
 pip install -e ".[dev]"
 ```
+
+### Optional native/runtime setup
+
+The optional Piper training extra builds native eSpeak components on Windows.
+It requires Visual Studio C++ Build Tools; the training extra was installed
+successfully under Python 3.11 after enabling Windows long paths.
+
+Kokoro preview requires a Python environment supported by its native/runtime
+dependencies. It was verified on 2026-08-28 in the dedicated Python 3.11
+environment by downloading Kokoro-82M and producing a WAV preview. It remains
+an inference-only capability; it is not a training path.
+
+The Piper adapter disables Piper-side silence trimming (AudioTrove has already
+curated the clips), uses a validation holdout for real manifests, and supplies
+a CPU-safe checkpoint callback. A ten-utterance, 22.05 kHz smoke run completed
+one epoch on 2026-08-28 and produced a loadable Lightning checkpoint. A fresh
+one-epoch measurement on the same
+corpus took 260.47 s and reached 2,646.6 MiB aggregate peak RSS, sampled across
+the parent and child processes with psutil.
+
+On the same LibriSpeech dev-clean clip (`1272-128104-0000.flac`), Python 3.11,
+CPU-only, base models, and psutil peak-RSS sampling, faster-whisper measured
+2.30 s / 490.6 MiB and openai-whisper 8.11 s / 697.5 MiB. A fresh full-corpus
+one-worker curation comparison on 2,703 LibriSpeech
+dev-clean clips measured 39.661 RTFx with Rust enabled (489.05 s) and 32.540
+RTFx with it disabled (596.06 s), with identical 2,123 kept / 580 filtered
+results. Peak RSS was not instrumented for that pair; Piper RAM remains
+unmeasured.
 
 Verify the CLI is available:
 

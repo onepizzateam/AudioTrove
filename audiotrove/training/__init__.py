@@ -1,9 +1,4 @@
-"""AudioTrove training layer.
-
-Thin wrappers around TTS training frameworks (F5-TTS, StyleTTS2, Piper,
-Matcha-TTS). Heavy dependencies are imported lazily inside ``train()`` so
-importing this package stays cheap and dependency-free.
-"""
+"""Optional training integrations, loaded lazily to keep imports lightweight."""
 
 from audiotrove.training.base import BaseTrainer, TrainingConfig
 from audiotrove.training.dataloader import RustAudioDataset
@@ -12,34 +7,20 @@ __all__ = ["BaseTrainer", "TrainingConfig", "RustAudioDataset", "get_trainer"]
 
 
 
-def get_trainer(framework: str, config: "TrainingConfig") -> "BaseTrainer":
-    """Return a trainer instance for ``framework``.
-
-    Args:
-        framework: One of ``"f5tts"``, ``"styletts2"``, ``"piper"``, ``"matcha"``.
-        config: A :class:`TrainingConfig`.
-
-    Raises:
-        ValueError: Unknown framework.
-    """
+def get_trainer(framework: str, config: TrainingConfig) -> BaseTrainer:
+    """Return the requested trainer; heavy framework imports remain lazy."""
     framework = framework.lower()
-    if framework == "f5tts":
-        from audiotrove.training.f5tts import F5TTSTrainer
-
-        return F5TTSTrainer(config)
-    if framework == "styletts2":
-        from audiotrove.training.styletts2 import StyleTTS2Trainer
-
-        return StyleTTS2Trainer(config)
-    if framework == "piper":
-        from audiotrove.training.piper import PiperTrainer
-
-        return PiperTrainer(config)
-    if framework == "matcha":
-        from audiotrove.training.matcha import MatchaTrainer
-
-        return MatchaTrainer(config)
-    raise ValueError(
-        f"Unknown training framework: {framework!r}. "
-        "Choose from ['f5tts', 'styletts2', 'piper', 'matcha']"
-    )
+    modules = {
+        "f5tts": ("audiotrove.training.f5tts", "F5TTSTrainer"),
+        "styletts2": ("audiotrove.training.styletts2", "StyleTTS2Trainer"),
+        "piper": ("audiotrove.training.piper", "PiperTrainer"),
+        "matcha": ("audiotrove.training.matcha", "MatchaTrainer"),
+    }
+    if framework not in modules:
+        raise ValueError(
+            f"Unknown training framework: {framework!r}. "
+            "Choose from ['f5tts', 'styletts2', 'piper', 'matcha']"
+        )
+    import importlib
+    module_name, class_name = modules[framework]
+    return getattr(importlib.import_module(module_name), class_name)(config)

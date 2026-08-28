@@ -6,6 +6,7 @@ from pathlib import Path
 import soundfile as sf
 
 from audiotrove.document import AudioDocument
+from audiotrove.qc import QCReport
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class TTSManifestExporter:
         self.metadata_path = self.output_dir / "metadata.csv"
         self.filelist_path = self.output_dir / "filelist.txt"
         self.total_duration_seconds = 0.0
+        self.qc_report = QCReport(str(self.output_dir / "qc_report.json"))
         self._initialize_files()
 
     @property
@@ -56,6 +58,7 @@ class TTSManifestExporter:
     def write(self, doc: AudioDocument) -> None:
         """Append one audio document to each requested manifest."""
         transcription = str(doc.metadata.get("transcription", ""))
+        self.qc_report.add(doc)
         # Per-clip speaker_id takes precedence over the exporter-level default.
         # This lets diarized clips carry their own speaker label automatically.
         effective_speaker_id = doc.metadata.get("speaker_id", self.speaker_id)
