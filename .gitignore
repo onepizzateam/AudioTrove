@@ -76,3 +76,4 @@ C:/tmp/
 
 # Optional Rust extension build output
 rust/**/target/
+vendor/
