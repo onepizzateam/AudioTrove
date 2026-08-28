@@ -112,21 +112,58 @@ class SNRFilter(GPUFilter):
         if not timestamps:
             return self._energy_fallback_snr(audio)
 
-        speech_mask = np.zeros(len(audio), dtype=bool)
-        for ts in timestamps:
-            start = int(ts["start"])
-            end = int(ts["end"])
-            speech_mask[start:end] = True
+        n = len(audio)
 
-        speech_frames = audio[speech_mask]
-        noise_frames = audio[~speech_mask]
+        # Merge (possibly overlapping) speech intervals, then derive speech and
+        # noise via contiguous index slices. This reproduces exactly the same
+        # speech/noise partition as a full-length boolean mask but avoids
+        # allocating an N-length bool array per document.
+        merged: list[list[int]] = []
+        for ts in sorted(timestamps, key=lambda t: int(t["start"])):
+            start = max(0, min(int(ts["start"]), n))
+            end = max(0, min(int(ts["end"]), n))
+            if end <= start:
+                continue
+            if merged and start <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+
+        speech_segments = [audio[s:e] for s, e in merged]
+        noise_segments = []
+        cursor = 0
+        for s, e in merged:
+            if s > cursor:
+                noise_segments.append(audio[cursor:s])
+            cursor = e
+        if cursor < n:
+            noise_segments.append(audio[cursor:n])
+
+        speech_frames = (
+            np.concatenate(speech_segments)
+            if speech_segments
+            else np.empty(0, dtype=audio.dtype)
+        )
+        noise_frames = (
+            np.concatenate(noise_segments)
+            if noise_segments
+            else np.empty(0, dtype=audio.dtype)
+        )
 
         if len(noise_frames) < sr * 0.1:
             doc.metadata["snr_note"] = "insufficient_noise_floor"
             return 40.0
 
-        signal_power = np.mean(speech_frames**2) if len(speech_frames) > 0 else 0.0
-        noise_power = np.mean(noise_frames**2) if len(noise_frames) > 0 else 0.0
+        signal_power = (
+            float(np.dot(speech_frames, speech_frames)) / max(len(speech_frames), 1)
+            if len(speech_frames) > 0
+            else 0.0
+        )
+        noise_power = (
+            float(np.dot(noise_frames, noise_frames)) / max(len(noise_frames), 1)
+            if len(noise_frames) > 0
+            else 0.0
+        )
 
         if noise_power == 0.0:
             return 40.0

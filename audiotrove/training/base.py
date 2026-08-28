@@ -22,6 +22,10 @@ class TrainingConfig:
         num_gpus: Number of GPUs (DDP when > 1).
         mixed_precision: Use fp16 training on CUDA when available.
         resume_from: Optional checkpoint path to resume from.
+        gradient_checkpointing: Trade compute for memory via activation checkpointing.
+        save_every_n_epochs: Checkpoint cadence in epochs.
+        torch_threads: Intra-op CPU thread count (``None`` = auto).
+        dataloader_workers: ``num_workers`` for the training DataLoader.
     """
 
     manifest_path: str
@@ -34,6 +38,11 @@ class TrainingConfig:
     num_gpus: int = 1
     mixed_precision: bool = True
     resume_from: Optional[str] = None
+    gradient_checkpointing: bool = True
+    save_every_n_epochs: int = 10
+    torch_threads: Optional[int] = None
+    dataloader_workers: int = 0
+
 
 
 class BaseTrainer(ABC):
