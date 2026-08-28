@@ -35,7 +35,7 @@ def _doctor_snapshot():
     optional_components = {
         "Rust extension": ("audiotrove_core",),
         "transcribe": ("whisper", "faster_whisper"),
-        "train-piper": ("piper_train",),
+        "train-piper": ("piper.train", "piper_train"),
         "infer": ("kokoro",),
         "enhance": ("deepfilternet",),
         "diarize": ("pyannote.audio",),

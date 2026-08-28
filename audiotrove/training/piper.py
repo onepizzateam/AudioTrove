@@ -24,7 +24,10 @@ class PiperTrainer:
 
     def train(self):
         try:
-            import piper_train  # noqa: F401
+            try:
+                import piper.train  # noqa: F401
+            except ImportError:
+                import piper_train  # noqa: F401
         except ImportError as exc:
             raise ImportError(
                 "Piper training requires the optional extra: pip install audiotrove[train-piper]"

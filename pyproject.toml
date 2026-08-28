@@ -42,7 +42,7 @@ gcs = ["gcsfs>=2023.1.0"]
 diarize = ["pyannote.audio>=3.1.0"]
 embed-dedup = ["faiss-cpu>=1.7.4", "speechbrain>=1.0.0"]
 transcribe = ["faster-whisper>=1.0.0", "openai-whisper>=20231117"]
-train-piper = ["piper-train"]
+train-piper = ["piper-tts @ git+https://github.com/OHF-voice/piper1-gpl.git"]
 infer = ["kokoro"]
 dev = [
     "pytest",
