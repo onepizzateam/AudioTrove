@@ -60,9 +60,19 @@ def test_doctor_smoke(monkeypatch):
 def test_doctor_recommendations_matrix():
     from audiotrove.cli.main import _doctor_recommendations
 
-    assert _doctor_recommendations(2, 2 * 1024**3)["workers"] == 2
-    assert _doctor_recommendations(16, 64 * 1024**3)["workers"] == 8
+    assert _doctor_recommendations(4, 8 * 1024**3) == {"workers": 4, "ram_per_worker_gib": 1.5}
+    assert _doctor_recommendations(8, 16 * 1024**3) == {"workers": 8, "ram_per_worker_gib": 1.5}
+    assert _doctor_recommendations(16, 32 * 1024**3) == {"workers": 8, "ram_per_worker_gib": 3.0}
     assert _doctor_recommendations(8, None)["workers"] == 4
+
+
+def test_doctor_warns_for_transcribe_ram_budget():
+    from audiotrove.cli.main import _doctor_recommendations, _doctor_warnings
+
+    snapshot = {"cpu_cores": 4, "available_ram": 0.25 * 1024**3,
+                "components": {"transcribe": True}}
+    recommendation = _doctor_recommendations(snapshot["cpu_cores"], snapshot["available_ram"])
+    assert _doctor_warnings(snapshot, recommendation)
 
 
 def test_cli_group_help():
@@ -204,6 +214,12 @@ def test_curate_workers_parameter():
 
         # Should accept workers parameter without error
         assert result.exit_code in [0, 1]
+
+
+def test_curate_help_includes_ram_ceiling():
+    result = CliRunner().invoke(cli, ["curate", "--help"])
+    assert result.exit_code == 0
+    assert "--max-ram-per-worker" in result.output
 
 
 def test_curate_rejects_non_positive_worker_count():

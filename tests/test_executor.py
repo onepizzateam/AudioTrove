@@ -130,7 +130,7 @@ def test_executor_with_checkpoint(tmp_path):
 
 
 def test_checkpoint_schema_version_is_added_to_legacy_database(tmp_path):
-    """Opening a pre-versioned checkpoint preserves processed rows and adds v1."""
+    """Opening a pre-versioned checkpoint preserves processed rows and adds v2."""
     import sqlite3
 
     db = tmp_path / "legacy.db"
@@ -147,8 +147,25 @@ def test_checkpoint_schema_version_is_added_to_legacy_database(tmp_path):
     assert executor._is_processed("legacy-doc")
     assert executor._conn.execute(
         "SELECT value FROM metadata WHERE key = 'schema_version'"
-    ).fetchone() == ("1",)
+    ).fetchone() == ("2",)
     executor._conn.close()
+
+
+def test_upgrade_checkpoint_schema_preserves_v1_rows(tmp_path):
+    """The explicit v1-to-v2 migration is additive and preserves all rows."""
+    import sqlite3
+    from audiotrove.executor.local import upgrade_checkpoint_schema
+
+    db = tmp_path / "v1.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE processed (doc_id TEXT PRIMARY KEY, processed_at TIMESTAMP)")
+    conn.execute("INSERT INTO processed (doc_id) VALUES ('one')")
+    conn.execute("INSERT INTO processed (doc_id) VALUES ('two')")
+    conn.commit()
+    upgrade_checkpoint_schema(conn)
+    assert conn.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone() == ("2",)
+    assert conn.execute("SELECT doc_id FROM processed ORDER BY doc_id").fetchall() == [("one",), ("two",)]
+    conn.close()
 
 
 def test_executor_skips_none_documents():

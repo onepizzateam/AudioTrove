@@ -10,6 +10,29 @@ import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
+CHECKPOINT_SCHEMA_VERSION = "2"
+
+
+def upgrade_checkpoint_schema(connection: sqlite3.Connection) -> None:
+    """Upgrade a legacy checkpoint in place without changing processed rows."""
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    row = connection.execute(
+        "SELECT value FROM metadata WHERE key = 'schema_version'"
+    ).fetchone()
+    if row is None:
+        # Databases without this row are v1. The v2 marker is additive-only.
+        connection.execute(
+            "INSERT INTO metadata (key, value) VALUES ('schema_version', ?)",
+            (CHECKPOINT_SCHEMA_VERSION,),
+        )
+    elif row[0] != CHECKPOINT_SCHEMA_VERSION:
+        connection.execute(
+            "UPDATE metadata SET value = ? WHERE key = 'schema_version'",
+            (CHECKPOINT_SCHEMA_VERSION,),
+        )
+    connection.commit()
 
 
 def _worker_process_doc(doc, pipeline):
@@ -156,11 +179,7 @@ class LocalExecutor:
             processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        cur.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        cur.execute("SELECT value FROM metadata WHERE key = 'schema_version'")
-        if cur.fetchone() is None:
-            cur.execute("INSERT INTO metadata (key, value) VALUES ('schema_version', '1')")
-        self._conn.commit()
+        upgrade_checkpoint_schema(self._conn)
 
     def _is_processed(self, doc_id: str) -> bool:
         if not self._conn:
