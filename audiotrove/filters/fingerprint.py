@@ -3,6 +3,11 @@
 import hashlib
 import numpy as np
 
+try:
+    from audiotrove_core import fingerprint as _rust_fingerprint
+except (ImportError, ModuleNotFoundError):
+    _rust_fingerprint = None
+
 
 class FingerprintDeduplicator:
     """Reject near-identical audio using a compact spectral fingerprint."""
@@ -15,6 +20,8 @@ class FingerprintDeduplicator:
 
     @staticmethod
     def _fingerprint(audio: np.ndarray) -> int:
+        if _rust_fingerprint is not None:
+            return int(_rust_fingerprint(np.asarray(audio, dtype=np.float32).tolist()))
         spectrum = np.abs(np.fft.rfft(np.asarray(audio, dtype=np.float32), n=2048))[1:]
         bands = np.array_split(spectrum, 64)
         mean = float(np.mean(spectrum))

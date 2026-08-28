@@ -24,6 +24,8 @@ except Exception:  # noqa: BLE001  # pragma: no cover - optional, we'll raise if
 
 from audiotrove.document import AudioDocument
 from audiotrove.utils.hashing import make_doc_id
+from audiotrove.io.rust_backend import decode_wav as _rust_decode_wav
+from audiotrove.io.rust_backend import glob_paths as _rust_glob_paths
 from audiotrove.io.rust_backend import resample as _resample
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ class LocalAudioReader:
         target_sample_rate: int = 16000,
         max_duration_seconds: Optional[float] = None,
         min_duration_seconds: float = 0.5,
+        max_ram_per_worker: Optional[float] = None,
     ):
         # Support both single pattern (str) and multiple patterns (list)
         if isinstance(path_pattern, str):
@@ -51,6 +54,7 @@ class LocalAudioReader:
         self.target_sr = target_sample_rate
         self.max_duration = max_duration_seconds
         self.min_duration = min_duration_seconds
+        self.max_ram_per_worker = max_ram_per_worker
 
     def __iter__(self) -> Iterator[Optional[AudioDocument]]:
         if fsspec is None:
@@ -60,7 +64,11 @@ class LocalAudioReader:
 
         for pattern in self.path_patterns:
             fs, path = fsspec.core.url_to_fs(pattern)
-            for fpath in fs.glob(path):
+            protocol = getattr(fs, "protocol", "file")
+            protocols = protocol if isinstance(protocol, (tuple, list)) else (protocol,)
+            is_local = any(value in {"file", "local"} for value in protocols)
+            paths = (_rust_glob_paths(path) if is_local else fs.glob(path))
+            for fpath in paths:
                 # Skip if we've already processed this path
                 if fpath in seen_paths:
                     continue
@@ -75,6 +83,35 @@ class LocalAudioReader:
                     yield None
 
     def _load(self, path: str, fs) -> Optional[AudioDocument]:
+        if self.max_ram_per_worker is not None:
+            try:
+                size = fs.info(path).get("size")
+                ceiling = self.max_ram_per_worker * (1024 ** 3)
+                if size and size > ceiling:
+                    logger.warning(
+                        "Streaming decode input %s is %.2f GiB, above the %.2f GiB/worker ceiling",
+                        path, size / (1024 ** 3), self.max_ram_per_worker,
+                    )
+            except (AttributeError, OSError, TypeError, ValueError):
+                logger.debug("Could not inspect size for %s", path, exc_info=True)
+        protocol = getattr(fs, "protocol", "file")
+        protocols = protocol if isinstance(protocol, (tuple, list)) else (protocol,)
+        is_local = any(value in {"file", "local"} for value in protocols)
+        if is_local and path.lower().endswith(".wav"):
+            rust_audio = _rust_decode_wav(path)
+            if rust_audio is not None:
+                audio, sr = rust_audio
+                if sr != self.target_sr:
+                    audio = _resample(audio, sr, self.target_sr)
+                duration = float(len(audio)) / float(self.target_sr)
+                if duration < self.min_duration:
+                    return None
+                if self.max_duration and duration > self.max_duration:
+                    audio = audio[: int(self.max_duration * self.target_sr)]
+                    duration = self.max_duration
+                return AudioDocument(audio=audio, sample_rate=self.target_sr,
+                                     source_path=path, duration_seconds=duration,
+                                     doc_id=make_doc_id(path))
         if torchaudio is None:
             if _soundfile is None:
                 raise RuntimeError("torchaudio or soundfile is required to load audio files")

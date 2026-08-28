@@ -6,9 +6,11 @@ import logging
 import importlib.util
 import os
 import platform
+import json
 
 from audiotrove import __version__
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 
@@ -64,6 +66,19 @@ def _doctor_recommendations(cpu_cores, available_ram):
     return {"workers": workers, "ram_per_worker_gib": round(ram_gib / workers * 0.75, 2)}
 
 
+def _doctor_warnings(snapshot, recommendation):
+    """Return warnings for optional models that exceed the worker budget."""
+    warnings = []
+    if snapshot["components"].get("transcribe") and snapshot["available_ram"] is not None:
+        required = recommendation["workers"] * 0.5 * (1024 ** 3)
+        if snapshot["available_ram"] < required:
+            warnings.append(
+                "transcribe extra: faster-whisper base is estimated at ~0.50 GiB "
+                "per worker and may exceed available RAM at the recommended worker count"
+            )
+    return warnings
+
+
 @cli.command()
 def doctor():
     """Report local CPU, memory, Rust, and optional-extra availability."""
@@ -81,6 +96,8 @@ def doctor():
     table.add_row("Recommended workers", str(recommendation["workers"]))
     table.add_row("Recommended RAM/worker", f"{recommendation['ram_per_worker_gib']:.2f} GiB")
     console.print(table)
+    for warning in _doctor_warnings(snapshot, recommendation):
+        console.print(f"[yellow]Warning: {warning}[/yellow]")
 
 
 @cli.command()
@@ -109,6 +126,18 @@ def preview(text, output_path, voice):
     click.echo(f"Preview written to {output_path}")
 
 
+@cli.command("augment")
+@click.argument("manifest", type=click.Path(exists=True))
+@click.argument("output_dir", type=click.Path())
+@click.option("--voice", default="af_heart", show_default=True)
+@click.option("--limit", type=click.IntRange(min=1), default=None)
+def augment(manifest, output_dir, voice, limit):
+    """Opt-in Kokoro synthetic augmentation for a tab-separated TTS manifest."""
+    from audiotrove.inference.preview import augment_manifest
+    outputs = augment_manifest(manifest, output_dir, voice, limit)
+    click.echo(f"Generated {len(outputs)} synthetic clips in {output_dir}")
+
+
 @cli.group()
 def pipeline():
     """Chain curation, CPU training, and optional voice preview stages."""
@@ -120,22 +149,56 @@ def pipeline():
 @click.option("--skip-train", is_flag=True)
 @click.option("--skip-preview", is_flag=True)
 @click.option("--preview-text", default="AudioTrove preview")
-def pipeline_run(input_path, output_path, skip_train, skip_preview, preview_text):
+@click.option("--preview-voice", default="af_heart", show_default=True)
+def pipeline_run(input_path, output_path, skip_train, skip_preview, preview_text, preview_voice):
     """Run curate, then Piper training, then optional preview."""
     from click import Context
 
+    output_dir = Path(output_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    state_path = output_dir / "pipeline_state.json"
+
+    def load_state():
+        try:
+            return json.loads(state_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def save_state(stage):
+        temporary = state_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"stage": stage}), encoding="utf-8")
+        os.replace(temporary, state_path)
+
+    state = load_state()
     ctx = Context(curate)
-    ctx.invoke(curate, input_path=input_path, output_path=output_path, tts=True,
-               vad_threshold=0.3, snr_min=15.0, output_format="jsonl", checkpoint=None,
-               workers=1, extensions="wav", segment=False, enhance=False, tts_min_duration=2.0,
-               tts_max_duration=15.0, tts_snr_min=20.0, tts_transcribe=False,
-               tts_whisper_model="base", tts_whisper_backend="faster", tts_diarize=False,
-               tts_hf_token=None, tts_diarize_min_speakers=None,
-               tts_diarize_max_speakers=None, max_ram_per_worker=None)
+    if state.get("stage") not in {"curated", "trained", "previewed"}:
+        ctx.invoke(curate, input_path=input_path, output_path=output_path, tts=True,
+                   vad_threshold=0.3, snr_min=15.0, output_format="jsonl",
+                   checkpoint=str(output_dir / "checkpoint.db"),
+                   workers=1, extensions="wav", segment=False, enhance=False, tts_min_duration=2.0,
+                   tts_max_duration=15.0, tts_snr_min=20.0, tts_transcribe=False,
+                   tts_whisper_model="base", tts_whisper_backend="faster", tts_diarize=False,
+                   tts_hf_token=None, tts_diarize_min_speakers=None,
+                   tts_diarize_max_speakers=None, max_ram_per_worker=None)
+        save_state("curated")
     if not skip_train:
-        click.echo("Training stage selected; invoke `audiotrove train --framework piper` with filelist.txt.")
+        from audiotrove.training.piper import PiperTrainer
+
+        filelist = output_dir / "filelist.txt"
+        if not filelist.exists():
+            raise click.ClickException(f"Curation did not produce {filelist}")
+        if state.get("stage") not in {"trained", "previewed"}:
+            PiperTrainer(str(filelist), str(output_dir / "piper")).train()
+            save_state("trained")
+        click.echo(f"Training complete: {output_dir / 'piper'}")
     if not skip_preview:
-        click.echo(f"Preview stage selected for: {preview_text}")
+        from audiotrove.inference.preview import synthesize
+
+        preview_path = output_dir / "preview.wav"
+        if state.get("stage") != "previewed":
+            synthesize(preview_text, str(preview_path), preview_voice)
+            save_state("previewed")
+        click.echo(f"Preview complete: {preview_path}")
 
 
 @cli.command()
@@ -327,6 +390,7 @@ def curate(
             hf_token=tts_hf_token,
             diarize_min_speakers=tts_diarize_min_speakers,
             diarize_max_speakers=tts_diarize_max_speakers,
+            max_ram_per_worker=max_ram_per_worker,
         )
         console.print("[cyan]TTS curation pipeline complete[/cyan]")
         console.print(f"  Kept: {summary['kept']}")
@@ -335,6 +399,20 @@ def curate(
         for output_file in summary["output_files"]:
             console.print(f"  Output: {output_file}")
         console.print(f"  QC report: {summary['qc_report']}")
+        try:
+            qc_data = json.loads(Path(summary["qc_report"]).read_text(encoding="utf-8"))
+            qc_table = Table(title="QC Summary")
+            qc_table.add_column("Metric", style="cyan")
+            qc_table.add_column("Value", style="magenta")
+            qc_table.add_row("Clips", str(qc_data.get("clips", 0)))
+            qc_table.add_row("Clipped", str(qc_data.get("clipped", 0)))
+            qc_table.add_row("Silence-only", str(qc_data.get("silence_only", 0)))
+            durations = qc_data.get("duration_seconds", {})
+            qc_table.add_row("Duration min/max", f"{durations.get('min')} / {durations.get('max')}")
+            qc_table.add_row("SNR samples", str(len(qc_data.get("snr_db", []))))
+            console.print(qc_table)
+        except (OSError, TypeError, ValueError):
+            logger.debug("Could not render QC summary", exc_info=True)
         return
 
     # Build pipeline
@@ -365,7 +443,7 @@ def curate(
         # If input is a file, just use that single file
         patterns = [str(input_p)]
 
-    reader = LocalAudioReader(patterns)
+    reader = LocalAudioReader(patterns, max_ram_per_worker=max_ram_per_worker)
     output_manifest = output_p / "manifest.jsonl"
     writer = JSONLWriter(str(output_manifest))
 

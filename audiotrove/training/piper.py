@@ -38,6 +38,12 @@ class PiperTrainer:
                 "Piper training requires the optional extra: pip install audiotrove[train-piper]"
             ) from exc
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        record_count = sum(1 for _ in self.iter_records())
+        # Piper's default split makes a one- or two-record smoke corpus empty.
+        # Preserve a validation holdout for real corpora so checkpoint monitors
+        # can run and keep the tiny-fixture path executable.
+        split_args = ["--data.validation_split", "0" if record_count < 10 else "0.1",
+                      "--data.num_test_examples", "0"]
         csv_path = self.output_dir / "metadata.csv"
         audio_dir = self.output_dir / "audio"
         audio_dir.mkdir(exist_ok=True)
@@ -50,14 +56,21 @@ class PiperTrainer:
                     shutil.copyfile(source, destination)
                 writer.writerow([destination.name, text])
         config_path = self.output_dir / "config.json"
-        checkpoint = self.output_dir / "last.ckpt"
-        command = [sys.executable, "-m", "piper.train", "fit",
+        cache_dir = self.output_dir / "cache"
+        cache_dir.mkdir(exist_ok=True)
+        checkpoints = sorted(self.output_dir.rglob("last.ckpt"))
+        checkpoint = checkpoints[-1] if checkpoints else self.output_dir / "checkpoints" / "last.ckpt"
+        command = [sys.executable, "-m", "audiotrove.training.piper_runner", "fit",
                    "--data.voice_name", self.output_dir.name,
                    "--data.csv_path", str(csv_path), "--data.audio_dir", str(audio_dir),
+                   "--data.cache_dir", str(cache_dir), "--data.espeak_voice", "en-us",
                    "--data.config_path", str(config_path), "--data.batch_size", str(self.batch_size),
+                   *split_args,
+                   "--data.trim_silence", "false",
                    "--trainer.max_epochs", str(self.max_epochs),
                    "--trainer.check_val_every_n_epoch", str(self.checkpoint_epochs),
-                   "--trainer.accelerator", "cpu", "--trainer.devices", "1"]
+                   "--trainer.accelerator", "cpu", "--trainer.devices", "1",
+                   "--trainer.default_root_dir", str(self.output_dir)]
         if self.resume and checkpoint.exists():
             command.extend(["--ckpt_path", str(checkpoint)])
         env = os.environ.copy()

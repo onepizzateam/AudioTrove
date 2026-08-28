@@ -30,6 +30,7 @@ def tts_pipeline(
     hf_token: str | None = None,
     diarize_min_speakers: int | None = None,
     diarize_max_speakers: int | None = None,
+    max_ram_per_worker: float | None = None,
 ) -> dict:
     """Curate audio files and export TTS-ready training manifests.
 
@@ -69,7 +70,8 @@ def tts_pipeline(
         if input_file.is_dir()
         else [str(input_file)]
     )
-    reader = LocalAudioReader(patterns, min_duration_seconds=0.0, max_duration_seconds=None)
+    reader = LocalAudioReader(patterns, min_duration_seconds=0.0, max_duration_seconds=None,
+                              max_ram_per_worker=max_ram_per_worker)
     pipeline = [
         *([VADSegmenter()] if segment else []),
         SileroVADFilter(min_speech_ratio=0.1),
