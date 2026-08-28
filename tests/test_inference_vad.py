@@ -1,13 +1,9 @@
 """Tests for standalone VAD inference session."""
 
-import sys
-import types
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-from audiotrove.document import AudioDocument
 from audiotrove.inference.vad import SileroVADInferenceSession, get_vad_session
 
 
