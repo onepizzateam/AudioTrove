@@ -1,0 +1,10 @@
+{
+  "date": "2026-08-28",
+  "corpus": "ten-utterance 22.05 kHz smoke corpus",
+  "framework": "Piper via AudioTrove adapter",
+  "max_epochs": 1,
+  "wall_time_seconds": 260.47,
+  "peak_rss_mib": 2646.6,
+  "rss_method": "psutil aggregate of parent and recursive child processes sampled every 100 ms",
+  "checkpoint_produced": true
+}

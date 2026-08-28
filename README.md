@@ -84,13 +84,30 @@ pip install -e ".[dev]"
 ### Optional native/runtime setup
 
 The optional Piper training extra builds native eSpeak components on Windows.
-It requires Visual Studio C++ Build Tools and a short temporary build path;
-the current development machine has the compiler but its pip temporary path is
-too long for CMake's Windows object-file limit.
+It requires Visual Studio C++ Build Tools; the training extra was installed
+successfully under Python 3.11 after enabling Windows long paths.
 
-Kokoro preview requires a compatible Python interpreter. Use Python 3.10 or
-3.11 in a separate environment when the main installation is on Python 3.13;
-Python 3.10/3.11 is not currently installed on the development machine.
+Kokoro preview requires a Python environment supported by its native/runtime
+dependencies. It was verified on 2026-08-28 in the dedicated Python 3.11
+environment by downloading Kokoro-82M and producing a WAV preview. It remains
+an inference-only capability; it is not a training path.
+
+The Piper adapter disables Piper-side silence trimming (AudioTrove has already
+curated the clips), uses a validation holdout for real manifests, and supplies
+a CPU-safe checkpoint callback. A ten-utterance, 22.05 kHz smoke run completed
+one epoch on 2026-08-28 and produced a loadable Lightning checkpoint. A fresh
+one-epoch measurement on the same
+corpus took 260.47 s and reached 2,646.6 MiB aggregate peak RSS, sampled across
+the parent and child processes with psutil.
+
+On the same LibriSpeech dev-clean clip (`1272-128104-0000.flac`), Python 3.11,
+CPU-only, base models, and psutil peak-RSS sampling, faster-whisper measured
+2.30 s / 490.6 MiB and openai-whisper 8.11 s / 697.5 MiB. A fresh full-corpus
+one-worker curation comparison on 2,703 LibriSpeech
+dev-clean clips measured 39.661 RTFx with Rust enabled (489.05 s) and 32.540
+RTFx with it disabled (596.06 s), with identical 2,123 kept / 580 filtered
+results. Peak RSS was not instrumented for that pair; Piper RAM remains
+unmeasured.
 
 Verify the CLI is available:
 

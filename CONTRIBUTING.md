@@ -32,6 +32,25 @@ audiotrove --version
 pytest tests/ -x -q
 ```
 
+## Homebrew installation
+
+AudioTrove is distributed through the project tap when a Homebrew formula is
+available:
+
+```bash
+brew tap onepizzateam/audiotrove
+brew install audiotrove
+```
+
+The formula installs the Python package; install the CPU-only PyTorch wheels
+first when the host does not already have them. If the tap is not yet present,
+use the documented pip installation instead:
+
+```bash
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install audiotrove
+```
+
 ---
 
 ## Running tests

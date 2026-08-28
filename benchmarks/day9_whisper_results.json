@@ -1,0 +1,10 @@
+{
+  "date": "2026-08-28",
+  "corpus": "LibriSpeech dev-clean clip 1272-128104-0000.flac",
+  "hardware": "Windows CPU-only host; Python 3.11",
+  "model": "base",
+  "measurement": "wall-clock transcription time; peak process RSS sampled with psutil",
+  "faster-whisper": {"wall_time_seconds": 2.30, "peak_rss_mib": 490.6},
+  "openai-whisper": {"wall_time_seconds": 8.11, "peak_rss_mib": 697.5},
+  "notes": "Both backends produced the same transcription. Model-load time was excluded from wall-clock transcription time."
+}

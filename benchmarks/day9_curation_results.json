@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-28",
+  "corpus": "LibriSpeech dev-clean",
+  "files": 2703,
+  "input_hours": 5.388,
+  "workers": 1,
+  "pipeline": "Silero/energy VAD, silence trim, SNR >= 20 dB, duration 2-15 s",
+  "rust_on": {"kept": 2123, "filtered": 580, "wall_time_seconds": 489.05, "rtfx": 39.661},
+  "rust_off": {"kept": 2123, "filtered": 580, "wall_time_seconds": 596.06, "rtfx": 32.54},
+  "notes": "Rust-on used the CPython 3.13 release wheel; Rust-off disabled the optional module in-process. Both runs used bounded 200-file chunks and identical settings. Peak RSS was not instrumented for this pair."
+}

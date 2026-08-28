@@ -240,3 +240,5 @@ with one long worker run; the benchmark wrappers use 200-file chunks and
 counts and wall time but reports `total_duration_seconds` as 0.0; derive kept
 duration from exported WAVs. A TODO in `tts_pipeline` defers speaker
 consistency filtering until a lightweight backend is available.
+
+The requested >500 MB-file peak-RSS measurement was not measured — no representative file available in the execution environment.

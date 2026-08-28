@@ -18,3 +18,4 @@ jobs:
           python-version: "3.11"
       - run: pip install ".${{ matrix.extras && format('[{0}]', matrix.extras) || '' }}"
       - run: audiotrove doctor
+      - run: python -c "import torch; assert not torch.cuda.is_available(); print(torch.__version__)"
