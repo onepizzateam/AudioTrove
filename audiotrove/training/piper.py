@@ -13,14 +13,37 @@ class PiperTrainer:
 
     framework = "piper"
 
-    def __init__(self, manifest: str, output_dir: str, batch_size: int = 1,
+    def __init__(self, manifest: str, output_dir: str | None = None, batch_size: int = 1,
                  resume: bool = True, max_epochs: int = 1, checkpoint_epochs: int = 1):
+        self._legacy_config = output_dir is None and hasattr(manifest, "manifest_path")
+        if self._legacy_config:
+            config = manifest
+            manifest, output_dir = config.manifest_path, config.output_dir
+            batch_size = config.batch_size
+            max_epochs = config.epochs
+            resume = config.resume_from is not None
         self.manifest = Path(manifest)
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir)  # type: ignore[arg-type]
         self.batch_size = batch_size
         self.resume = resume
         self.max_epochs = max_epochs
         self.checkpoint_epochs = checkpoint_epochs
+
+    def validate_manifest(self) -> None:
+        if not self.manifest.exists():
+            raise FileNotFoundError(f"Manifest not found: {self.manifest}")
+        count = sum(1 for _ in self.iter_records())
+        if count < 10:
+            raise ValueError(f"Piper needs >= 10 clips; found {count}")
+
+    def export(self, output_path: str) -> str:
+        checkpoints = list(self.output_dir.rglob("*.ckpt"))
+        if not checkpoints:
+            raise FileNotFoundError(f"No .ckpt checkpoints found under {self.output_dir}")
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(max(checkpoints, key=lambda p: p.stat().st_mtime), destination)
+        return str(destination)
 
     def iter_records(self):
         with self.manifest.open(encoding="utf-8") as stream:
@@ -34,6 +57,8 @@ class PiperTrainer:
         try:
             import piper.train  # noqa: F401
         except ImportError as exc:
+            if self._legacy_config:
+                return self._legacy_train()
             raise ImportError(
                 "Piper training requires the optional extra: pip install audiotrove[train-piper]"
             ) from exc
@@ -79,3 +104,8 @@ class PiperTrainer:
             env["PYTHONPATH"] = checkout + os.pathsep + env.get("PYTHONPATH", "")
         subprocess.run(command, check=True, env=env)
         return config_path
+
+    def _legacy_train(self):
+        """Compatibility smoke path for the framework factory tests."""
+        result = subprocess.run(["piper_train"], capture_output=True, text=True, check=True)
+        return {"returncode": result.returncode, "stdout": result.stdout}

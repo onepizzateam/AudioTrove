@@ -188,7 +188,7 @@ def test_tts_pipeline_whisper_is_last_when_transcribe_enabled(tmp_path, monkeypa
 
     # Stub out WhisperTranscriber so whisper doesn't need to be installed.
     class StubWhisperTranscriber:
-        def __init__(self, model_name="base"):
+        def __init__(self, model_name="base", device="cpu"):
             pass
 
     monkeypatch.setattr("audiotrove.pipelines.tts.LocalExecutor", FakeExecutor)
@@ -224,7 +224,7 @@ def test_tts_pipeline_whisper_not_called_on_duration_rejected_doc(tmp_path, monk
     class SpyWhisperTranscriber:
         name = "whisper_transcriber"
 
-        def __init__(self, model_name="base"):
+        def __init__(self, model_name="base", device="cpu"):
             pass
 
         def transform(self, doc: AudioDocument) -> AudioDocument:
@@ -344,5 +344,4 @@ def test_tts_pipeline_diarize_writes_per_speaker_ids_to_manifest(tmp_path, monke
             assert sid in {"SPEAKER_00", "SPEAKER_01"}, (
                 f"Unexpected speaker_id in manifest: {sid!r}"
             )
-
 
