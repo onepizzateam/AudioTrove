@@ -95,10 +95,7 @@ def train(framework, manifest, output_dir):
     from audiotrove.training.piper import PiperTrainer
     trainer = PiperTrainer(manifest, output_dir)
     click.echo(f"Validated {sum(1 for _ in trainer.iter_records())} manifest records.")
-    try:
-        trainer.train()
-    except NotImplementedError as exc:
-        raise click.ClickException(str(exc)) from exc
+    trainer.train()
 
 
 @cli.command()
