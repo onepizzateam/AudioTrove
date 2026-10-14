@@ -570,5 +570,88 @@ def inspect(input_path, extensions, limit):
     console.print(table)
 
 
+@cli.command("split")
+@click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--train",
+    "train_fraction",
+    default=0.8,
+    type=float,
+    show_default=True,
+    help="Fraction of data for the train split.",
+)
+@click.option(
+    "--val",
+    "val_fraction",
+    default=0.1,
+    type=float,
+    show_default=True,
+    help="Fraction of data for the val split.",
+)
+@click.option(
+    "--test",
+    "test_fraction",
+    default=0.1,
+    type=float,
+    show_default=True,
+    help="Fraction of data for the test split.",
+)
+@click.option(
+    "--stratify",
+    default=None,
+    help="Metadata field to stratify splits by (e.g. speaker).",
+)
+@click.option(
+    "--output-dir",
+    default="./splits/",
+    show_default=True,
+    help="Output directory to write split JSONL files.",
+)
+@click.option(
+    "--seed",
+    default=42,
+    type=int,
+    show_default=True,
+    help="Random seed for reproducible splits.",
+)
+def split(manifest_path, train_fraction, val_fraction, test_fraction, stratify, output_dir, seed):
+    """Split a JSONL manifest into train/val/test subsets."""
+    total_frac = train_fraction + val_fraction + test_fraction
+    if abs(total_frac - 1.0) > 1e-5:
+        raise click.ClickException(
+            f"Fractions must sum to 1.0, got train={train_fraction}, val={val_fraction}, "
+            f"test={test_fraction} (sum={total_frac:.4f})"
+        )
+    if train_fraction < 0.0 or val_fraction < 0.0 or test_fraction < 0.0:
+        raise click.ClickException("Split fractions must be non-negative.")
+
+    from audiotrove.manifest.split import split_manifest
+
+    try:
+        counts = split_manifest(
+            manifest_path=manifest_path,
+            output_dir=output_dir,
+            train_fraction=train_fraction,
+            val_fraction=val_fraction,
+            test_fraction=test_fraction,
+            stratify_field=stratify,
+            seed=seed,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(title="Manifest Split Results")
+    table.add_column("Split", style="cyan")
+    table.add_column("Count", style="magenta")
+    table.add_column("File", style="green")
+    out_p = Path(output_dir)
+    table.add_row("Train", str(counts["train"]), str(out_p / "train.jsonl"))
+    table.add_row("Val", str(counts["val"]), str(out_p / "val.jsonl"))
+    table.add_row("Test", str(counts["test"]), str(out_p / "test.jsonl"))
+    table.add_row("Total", str(counts["total"]), "")
+    console.print(table)
+    console.print(f"[green]Successfully split manifest into {output_dir}[/green]")
+
+
 if __name__ == "__main__":
     cli()
