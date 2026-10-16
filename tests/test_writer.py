@@ -108,3 +108,55 @@ def test_jsonl_writer_metadata_preservation(tmp_path):
     with open(output_path) as f:
         content = json.loads(f.read())
         assert content["metadata"] == {"key": "value"}
+
+
+def test_jsonl_writer_strict_metadata_success(tmp_path):
+    output_path = tmp_path / "test_output.jsonl"
+    writer = JSONLWriter(str(output_path), required_metadata=["speaker", "snr_db"])
+    audio, sr = _make_audio()
+    doc = AudioDocument(
+        audio=audio,
+        sample_rate=sr,
+        source_path="test.wav",
+        duration_seconds=1.0,
+        doc_id=make_doc_id("test.wav"),
+        metadata={"speaker": "spk1", "snr_db": 24.5},
+    )
+    writer.write(doc)
+    assert output_path.exists()
+
+
+def test_jsonl_writer_strict_metadata_missing_raises(tmp_path):
+    import pytest
+
+    output_path = tmp_path / "test_output.jsonl"
+    writer = JSONLWriter(str(output_path), required_metadata=["snr_db", "vad_speech_ratio"])
+    audio, sr = _make_audio()
+    doc = AudioDocument(
+        audio=audio,
+        sample_rate=sr,
+        source_path="test.wav",
+        duration_seconds=1.0,
+        doc_id=make_doc_id("test.wav"),
+        metadata={"snr_db": 24.5},
+    )
+    with pytest.raises(ValueError, match="missing required metadata field\\(s\\): vad_speech_ratio"):
+        writer.write(doc)
+
+
+def test_jsonl_writer_strict_metadata_comma_string(tmp_path):
+    import pytest
+
+    output_path = tmp_path / "test_output.jsonl"
+    writer = JSONLWriter(str(output_path), required_metadata="speaker, language")
+    audio, sr = _make_audio()
+    doc = AudioDocument(
+        audio=audio,
+        sample_rate=sr,
+        source_path="test.wav",
+        duration_seconds=1.0,
+        doc_id=make_doc_id("test.wav"),
+        metadata={"speaker": "alice"},
+    )
+    with pytest.raises(ValueError, match="missing required metadata field\\(s\\): language"):
+        writer.write(doc)

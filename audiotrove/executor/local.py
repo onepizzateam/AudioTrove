@@ -3,11 +3,10 @@ Local executor with optional multi-worker parallelism.
 """
 
 import logging
-import sqlite3
-from pathlib import Path
-from typing import Optional
 import os
+import sqlite3
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 CHECKPOINT_SCHEMA_VERSION = "2"
@@ -135,7 +134,7 @@ def _preload_silero_model() -> None:
 
         v = SileroVADFilter()
         _ = v.model  # access to force lazy load
-    except Exception:  # noqa: BLE001, S110
+    except Exception:  # noqa: BLE001
         # If loading fails, proceed without raising — worker will fallback to energy VAD
         logger.debug("Silero VAD preload failed; workers will fallback to energy VAD")
 
@@ -157,8 +156,8 @@ class LocalExecutor:
     the pipeline and return results.
     """
 
-    def __init__(self, pipeline: list, checkpoint_path: Optional[str] = None, num_workers: int = 1,
-                 max_ram_per_worker: Optional[float] = None):
+    def __init__(self, pipeline: list, checkpoint_path: str | None = None, num_workers: int = 1,
+                 max_ram_per_worker: float | None = None):
         self.pipeline = pipeline
         self.checkpoint_path = checkpoint_path
         self.num_workers = num_workers
@@ -253,7 +252,7 @@ class LocalExecutor:
                         try:
                             if block.filter(d):
                                 new_docs.append(d)
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             block_name = getattr(block, "name", block.__class__.__name__)
                             logger.exception(
                                 f"Filter {block_name} raised exception on {d.source_path}"
@@ -277,7 +276,7 @@ class LocalExecutor:
                         try:
                             expanded = block.transform(d)
                             new_docs.extend(expanded if isinstance(expanded, list) else [expanded])
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             block_name = getattr(block, "name", block.__class__.__name__)
                             logger.exception(
                                 f"Fan-out Transformer {block_name} raised exception on {d.source_path}"
@@ -298,7 +297,7 @@ class LocalExecutor:
                         try:
                             d = block.transform(d)
                             new_docs.append(d)
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             block_name = getattr(block, "name", block.__class__.__name__)
                             logger.exception(
                                 f"Transformer {block_name} raised exception on {d.source_path}"
@@ -414,7 +413,9 @@ class LocalExecutor:
                         # original source ID so a resume skips the whole input.
                         self._mark_processed(future_to_doc[future].doc_id)
 
-                except Exception:  # noqa: BLE001
+                except ValueError:
+                    raise
+                except Exception:
                     logger.exception("Worker task failed")
                     stats["errors"] += 1
 

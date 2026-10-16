@@ -1,12 +1,13 @@
+import importlib.util
+import json
+import logging
+import os
+import platform
+from pathlib import Path
+
 import click
 from rich.console import Console
 from rich.table import Table
-from pathlib import Path
-import logging
-import importlib.util
-import os
-import platform
-import json
 
 from audiotrove import __version__
 
@@ -320,6 +321,11 @@ def pipeline_run(input_path, output_path, skip_train, skip_preview, preview_text
     type=int,
     help="Maximum number of speakers for diarization.",
 )
+@click.option(
+    "--strict-metadata",
+    default=None,
+    help="Comma-separated required metadata keys. Pipeline fails fast if any key is missing.",
+)
 def curate(
     input_path,
     output_path,
@@ -343,16 +349,17 @@ def curate(
     tts_hf_token,
     tts_diarize_min_speakers,
     tts_diarize_max_speakers,
+    strict_metadata,
 ):
     """Curate audio files from INPUT_PATH into OUTPUT_PATH.
 
     Applies VAD and SNR filters, writes JSONL manifest.
     """
+    from audiotrove.executor.local import LocalExecutor
+    from audiotrove.filters.snr import SNRFilter
+    from audiotrove.filters.vad import SileroVADFilter
     from audiotrove.io.readers import LocalAudioReader
     from audiotrove.io.writers import JSONLWriter
-    from audiotrove.filters.vad import SileroVADFilter
-    from audiotrove.filters.snr import SNRFilter
-    from audiotrove.executor.local import LocalExecutor
 
     if enhance:
         try:
@@ -445,7 +452,12 @@ def curate(
 
     reader = LocalAudioReader(patterns, max_ram_per_worker=max_ram_per_worker)
     output_manifest = output_p / "manifest.jsonl"
-    writer = JSONLWriter(str(output_manifest))
+    req_meta = (
+        [k.strip() for k in strict_metadata.split(",") if k.strip()]
+        if strict_metadata
+        else None
+    )
+    writer = JSONLWriter(str(output_manifest), required_metadata=req_meta)
 
     # Executor
     checkpoint_db = checkpoint or str(output_p / "checkpoint.db")
@@ -476,6 +488,8 @@ def curate(
     console.print(f"  Output: {output_manifest}")
     console.print(f"  Checkpoint: {checkpoint_db}")
     console.print(f"  Workers: {workers}")
+    if req_meta:
+        console.print(f"  Strict metadata: {', '.join(req_meta)}")
     if max_ram_per_worker is not None:
         console.print(f"  RAM ceiling: {max_ram_per_worker:.2f} GiB/worker")
     console.print(f"  Extensions: {', '.join(exts)}")
@@ -487,7 +501,10 @@ def curate(
     )
     console.print()
 
-    stats = executor.run(reader, writer)
+    try:
+        stats = executor.run(reader, writer)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     # Print results
     table = Table(title="Curation Results")
@@ -518,8 +535,9 @@ def curate(
 )
 def inspect(input_path, extensions, limit):
     """Show statistics for an audio directory without filtering."""
-    from audiotrove.io.readers import LocalAudioReader
     import numpy as np
+
+    from audiotrove.io.readers import LocalAudioReader
 
     input_p = Path(input_path)
     if not input_p.exists():
